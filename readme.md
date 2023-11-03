@@ -187,7 +187,7 @@ lets see how INSERT AND DELETE act in unidirectional relationship
 
 ### Regular Unidirectional @OneToMany
 
-checking how the INSERT and 
+checking how the INSERT and
 
 #### Persisting Author and their books
 
@@ -372,3 +372,121 @@ So, deleting the first book acts exactly as deleting the last book.
 Besides the performance penalties caused by the dynamic number of additional SQL statements, we also face the performance penalties caused by the deletion and reinsertion of the index entries associated with the foreign key column of the junction table (most databases use indexes for foreign key columns).
 
 When the database deletes all the table rows associated with the parent entity from the junction table, it also deletes the corresponding index entries. When the database inserts back in the junction table, it inserts the index entries as well.
+
+### Using @OrderColumn
+
+By adding the @OrderColumn annotation, the unidirectional @OneToMany association becomes ordered. In other words, @OrderColumn instructs Hibernate to materialize the element index (index of every collection element) into a separate database column of the junction table so that the collection is sorted using an ORDER BY clause. In this case, the index of every collection element is going to be stored in the books\_order column of the junction table.
+
+#### Persist the Author and Books
+
+Persisting the author and the associated books from the snapshot via the insertAuthorWithBooks() service-method triggers the following relevant SQL statements:
+
+```
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding:[34, History, Joana Nimar]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[001-JN, A History of Ancient Prague]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[002-JN, A People's History]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[003-JN, World History]
+```
+
+-- additional inserts not needed for bidirectional @OneToMany
+
+```
+INSERT INTO author_books (author_id, books_order, books_id)
+VALUES (?, ?, ?)
+Binding:[1, 0, 1]
+INSERT INTO author_books (author_id, books_order, books_id)
+VALUES (?, ?, ?)
+Binding:[1, 1, 2]
+INSERT INTO author
+_books (author_id, books_order, books_id)
+VALUES (?, ?, ?)
+Binding:[1, 2, 3]
+```
+
+Looks like @OrderColumn doesn’t bring any benefit. The three additional INSERT statements are still triggered.
+
+#### Persist a New Book of an Existing Author
+
+Persisting a new book via the insertNewBook() service-method triggers the following relevant SQL statements:
+
+```
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[004-JN, History Details]
+-- this is not needed for bidirectional @OneToMany
+INSERT INTO author_books (author_id, books_order, books_id)
+VALUES (?, ?, ?)
+Binding:[1, 3, 4]
+```
+
+There is good news and bad news!
+
+The good news is that, this time, Hibernate doesn’t delete the associated books to add them back from memory.
+
+The bad news is that, in comparison to bidirectional @OneToMany association, there is still an additional INSERT statement in the junction table. So, in this context, @OrderColumn brought some benefit.
+
+#### Delete the Last Book
+
+Deleting the last book via deleteLastBook() triggers the following relevant SQL statements:
+
+```
+DELETE FROM author_books
+WHERE author_id = ?
+AND books_order = ?
+Binding:[1, 2]
+```
+
+-- for bidirectional @OneToMany this is the only needed DML
+
+```
+DELETE FROM book
+WHERE id = ?
+Binding:[3]
+```
+
+Looks like @OrderColumn brought some benefit in the case of removing the last book. The JPA persistence provider (Hibernate) did not delete all the associated books to add the remaining back from memory.
+
+But, in comparison to the bidirectional @OneToMany association, there is still an additional DELETE triggered against the junction table.
+
+#### Delete the First Book
+
+Deleting the first book via deleteFirstBook() triggers the following relevant SQL statements:
+
+```
+DELETE FROM author_books
+WHERE author_id = ?
+AND books_order = ?
+Binding:[1, 2]
+UPDATE author_books
+SET books_id = ?
+WHERE author_id = ?
+AND books_order = ?
+Binding:[3, 1, 1]
+UPDATE author_books
+SET books_id = ?
+WHERE author_id = ?
+AND books_order = ?
+Binding:[2, 1, 0]
+```
+
+-- for bidirectional @OneToMany this is the only needed DML
+
+```
+DELETE FROM book
+WHERE id = ?
+Binding:[1]
+```
+
+The more you move away from the end of the collection, the smaller the benefit of using @OrderColumn. Deleting the first book results in a DELETE from the junction table followed by a bunch of UPDATE statements meant to preserve the in-memory order of the collection in the database. Again, this is not efficient.
+
+Adding @OrderColumn can bring some benefits for removal operations. Nevertheless, the closer an element to be removed is to the head of the fetched list, the more UPDATE statements are needed.
+
+This causes performance penalties. Even in the best-case scenario (removing an element from the tail of the collection), this approach is not better than bidirectional @OneToMany association.

@@ -24,14 +24,17 @@ public class Author implements Serializable {
     private String genre;
     private int age;
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderColumn(name = "book_order")
     private List<Book> books = new ArrayList<>();
 
     public void addBook(Book book) {
         this.books.add(book);
     }
+
     public void removeBook(Book book) {
         this.books.remove(book);
     }
+
     public void removeBooks() {
         Iterator<Book> iterator = this.books.iterator();
         while (iterator.hasNext()) {
