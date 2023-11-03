@@ -490,3 +490,120 @@ The more you move away from the end of the collection, the smaller the benefit o
 Adding @OrderColumn can bring some benefits for removal operations. Nevertheless, the closer an element to be removed is to the head of the fetched list, the more UPDATE statements are needed.
 
 This causes performance penalties. Even in the best-case scenario (removing an element from the tail of the collection), this approach is not better than bidirectional @OneToMany association.
+
+
+### @JoinColumn
+
+Now, let’s see if adding @JoinColumn will bring any benefit:
+
+@OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+@JoinColumn(name = "author_id")
+private List<Book> books = new ArrayList<>();
+
+Adding @JoinColumn instructs Hibernate that the @OneToMany association is capable of
+controlling the child-table foreign key. In other words, the junction table is eliminated
+and the number of tables is reduced from three to two, as shown
+
+![image.png](assets/imagefour.png)
+
+
+#### Persist the author and the books
+
+Persisting the author and the associated books via the insertAuthorWithBooks() service-method triggers the following relevant SQL statements:
+
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding:[34, History, Joana Nimar]                                                                                                                         INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[001-JN, A History of Ancient Prague]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[002-JN, A People's History]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[003-JN, World History]
+
+-- additional DML that are not needed in bidirectional @OneToMany
+
+
+UPDATE book
+SET author_id = ?
+WHERE id = ?
+Binding:[1, 1]
+UPDATE book
+SET author_id = ?
+WHERE id = ?
+Binding:[1, 2]
+UPDATE book
+SET author_id = ?
+WHERE id = ?
+Binding:[1, 3]
+
+So, for each inserted book, Hibernate triggers an UPDATE to set the author\_id value. Obviously, this adds a performance penalty in comparison to the bidirectional @OneToMany association.
+
+
+#### Persist a New Book of an Existing Author
+
+Persisting a new book via the insertNewBook() service-method triggers the following relevant SQL statements:
+
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[004-JN, History Details]
+
+-- additional DML that is not needed in bidirectional @OneToMany
+
+
+UPDATE book
+SET author_id = ?
+WHERE id = ?
+Binding:[1, 4]
+
+
+This is not as bad as a regular unidirectional @OneToMany association, but it still requires an UPDATE statement that is not needed in bidirectional @OneToMany associations.
+
+#### Delete the Last Book
+
+Deleting the last book via deleteLastBook() triggers the following relevant SQL statements:
+
+UPDATE book
+SET author_id = NULL
+WHERE author_id = ?
+AND id = ?
+Binding:[1, 3]
+
+-- for bidirectional @OneToMany this is the only needed DML
+
+DELETE FROM book
+WHERE id = ?
+Binding:[3]
+
+The JPA persistence provider (Hibernate) dissociates the book from its author by setting author\_id to null.
+
+Next, the disassociated book is deleted, thanks to orhpanRemoval=true. Nevertheless, this additional UPDATE is not necessary with bidirectional @OneToMany association.
+
+#### Delete the First Book
+
+Deleting the first book via deleteFirstBook() triggers the following relevant SQL statements (these are the same SQL statements as in the previous subsection):
+
+UPDATE book
+SET author_id = NULL
+WHERE author_id = ?
+AND id = ?
+Binding:[1, 1]
+
+-- for bidirectional @OneToMany this is the only needed DML
+
+DELETE FROM book
+WHERE id = ?
+Binding:[1]
+
+The UPDATE is still there! Once again, the bidirectional @OneToMany association wins this game.
+
+
+Adding @JoinColumn can provide benefits over the regular unidirectional @OneToMany, but is not better than a bidirectional @OneToMany association. The additional UPDATE statements still cause a performance degradation
+
+Adding @JoinColumn and @OrderColumn at the same time is still not better than bidirectional @OneToMany.
+
+Moreover, using Set instead of List or unidirectional @OneToMany with @JoinColumn (e.g., @ManyToOne @Join Column(name = "author\_id", updatable = false, insertable = false)) still performs worse than a bidirectional @OneToMany association.
+
+As a rule of thumb, a unidirectional @OneToMany association is less efficient than a bidirectional @OneToMany or unidirectional @ManyToOne associations.
