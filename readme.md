@@ -1,3 +1,9 @@
+# <p style="color: #2563EB">Spring Data JPA Best Practices</p>
+## Table of contents
+1. [Associations](#Associations)
+   1. [How to effectively shape the @OneToMany Associations](#how-to-effectively-shape-the-onetomany-associations)
+   2. [Why should you avoid the unidirectional @OneToMany Association](#why-should-you-avoid-the-unidirectional-onetomany-association)
+
 # Associations
 
 ## How to effectively shape the @OneToMany Associations
