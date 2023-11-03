@@ -155,3 +155,220 @@ pay attention to remove entities operations especially child entities operations
 While CascadeType.Remove and orphanRemoval=true will do their jobs but they may produce too may SQL statements
 
 Relying on bulk operations is the best way to delete any significant amount of entities
+
+## Why should you avoid the unidirectional @OneToMany Association
+
+Consider the Author and Book entities are involved in a bidirectional lazy @OneToMany association
+
+Trying to insert a child entity, a book will result in one SQL INSERT statement trggered aganist the book table
+
+Trying to delete will result in one SQL delete statement trggered aganist the book table
+
+Now lets assume that the same Author and Book entities are involved in a unidirectional @OneToMany association
+
+```
+@OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+```
+
+The missing @ManyToOne association leads to separate junction table(author_books) meant to manage the parent-child association
+
+example
+
+![image.png](assets/imagetwo.png)
+
+The junction table holds two foreign keys, so indexing consumes more memmory than in the case of bidirectional relationship @OneToMany
+
+Moreover having three tables affects the query operations as well
+
+Reading the data may require three joins instead of two as in the case of bidirectional @ManyToOne association
+
+lets see how INSERT AND DELETE act in unidirectional relationship
+
+### Regular Unidirectional @OneToMany
+
+checking how the INSERT and 
+
+#### Persisting Author and their books
+
+The service method for persisting an author and the associated books is as follows
+
+```
+@Transactional
+public void insertAuthorWithBooks() {
+Author jn = new Author();
+jn.setName("Joana Nimar");
+jn.setAge(34);
+jn.setGenre("History");
+Book jn01 = new Book();
+jn01.setIsbn("001-JN");
+jn01.setTitle("A History of Ancient Prague");
+Book jn02 = new Book();
+jn02.setIsbn("002-JN");
+jn02.setTitle("A People's History");
+Book jn03 = new Book();
+jn03.setIsbn("003-JN");
+jn03.setTitle("World History");
+jn.addBook(jn01);
+jn.addBook(jn02);
+jn.addBook(jn03);
+authorRepository.save(jn);
+}
+```
+
+inspecting the generated SQL statements reveals that in comparison to the bidirectional @OneToMany association there are 3 additional insert statementsin the junction table (for n books there are n additiinal inserts)
+
+```
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding:[34, History, Joana Nimar]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[001-JN, A History of Ancient Prague]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[002-JN, A People's History]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[003-JN, World History]
+```
+
+-- additional inserts that are not needed for bidirectional @OneToMany
+
+```
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 1]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 2]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 3]
+```
+
+so in this context the unidirectional @OneToMany association is less efficient than bidirectional @OneToMany association
+
+#### Persisting a new book of an existing author
+
+Since Joana Nimar has just published a new book, we have to add it to the book table. This time, the service-method looks as follows:
+
+@Transactional
+public void insertNewBook() {
+Author author = authorRepository.fetchByName("Joana Nimar");
+Book book = new Book();
+book.setIsbn("004-JN");
+book.setTitle("History Details");
+author.addBook(book); // use addBook() helper
+authorRepository.save(author);
+}
+
+Calling this method and focusing on SQL INSERT statements results in the following output:
+
+```
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding:[004-JN, History Details]
+-- the following DML statements don't appear in bidirectional @OneToMany
+DELETE FROM author_books
+WHERE author_id = ?
+Binding:[1]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 1]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 2]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)Binding:[1, 3]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 4]
+```
+
+So, in order to insert a new book, the JPA persistence provider (Hibernate) deletes all the associated books from the junction table and it adds the new book in-memmory and persists again
+
+This is far from being efficient and potential performance penalty is quite obvius
+
+#### Deleting the last book
+
+Deleting the last book involves fetching the associated List of an author and deleting the last book from this list, as follows:
+
+```
+@Transactional
+public void deleteLastBook() {
+Author author = authorRepository.fetchByName("Joana Nimar");
+Listbook books = author.getBooks();
+// use removeBook() helper
+author.removeBook(books.get(books.size() - 1));
+}
+```
+
+Calling deleteLastBook() reveals the following relevant SQL statements:
+
+```
+DELETE FROM author_books
+WHERE author_id = ?
+Binding:[1]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 1]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 2]
+```
+
+-- for bidirectional @OneToMany this is the only needed DML
+
+```
+DELETE FROM book
+WHERE id = ?
+Binding:[3]
+```
+
+So, in order to delete the last book, the JPA persistence provider (Hibernate) deletes all associated books from the junction table, removes in-memory the last book, and persists the remaining books back again.
+
+So, in comparison to the bidirectional @OneToMany association, there are several additional DML statements representing a performance penalty.
+
+The more associated books there are, the larger the performance penalty.
+
+#### Deleting the first book
+
+Deleting the first book involves fetching the associated List of an author and deleting the first book from this list, as follows:
+
+```
+@Transactional
+public void deleteFirstBook() {
+Author author = authorRepository.fetchByName("Joana Nimar");
+Listbook books = author.getBooks();
+author.removeBook(books.get(0));
+}
+```
+
+Calling deleteFirstBook() reveals the following relevant SQL statements:
+
+```
+DELETE FROM author_books
+WHERE author_id = ?
+Binding:[1]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 2]
+INSERT INTO author_books (author_id, books_id)
+VALUES (?, ?)
+Binding:[1, 3]
+```
+
+-- for bidirectional @OneToMany this is the only needed DML
+
+```
+DELETE FROM book
+WHERE id = ?
+Binding:[1]
+```
+
+So, deleting the first book acts exactly as deleting the last book.
+
+Besides the performance penalties caused by the dynamic number of additional SQL statements, we also face the performance penalties caused by the deletion and reinsertion of the index entries associated with the foreign key column of the junction table (most databases use indexes for foreign key columns).
+
+When the database deletes all the table rows associated with the parent entity from the junction table, it also deletes the corresponding index entries. When the database inserts back in the junction table, it inserts the index entries as well.
