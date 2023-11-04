@@ -41,8 +41,21 @@ public class AuthorService {
         jn.addBook(jn02);
         jn.addBook(jn03);
 
-
         authorRepo.save(jn);
+
+        Author authortwo = new Author();
+        authortwo.setName("dennis");
+        authortwo.setAge(23);
+        authortwo.setGenre("tech");
+        authortwo.addBook(jn01);
+        authorRepo.save(authortwo);
+
+        Author authorthree = new Author();
+        authorthree.setName("paul");
+        authorthree.setAge(25);
+        authorthree.setGenre("biology");
+        authorthree.addBook(jn01);
+        authorRepo.save(authorthree);
 
     }
 
@@ -91,6 +104,11 @@ public class AuthorService {
         Author author = authorRepo.fetchByName("Joana Nimar");
         Book book = bookRepo.findById(2L).get();
         author.removeBook(book);
+    }
+    @Transactional
+    public void fetchAuthors(){
+        Book book = bookRepo.findById(1L).get();
+        book.getAuthors().forEach(System.out::println);
     }
 
 }

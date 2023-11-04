@@ -1065,3 +1065,75 @@ This is much better since a single DELETE statement is needed to accomplish the 
 
 
 When using the @ManyToMany annotation, always use a java.util.Set. Do not use the java.util.List. In the case of other associations, use the one that best fits your case. If you go with List, do not forget to be aware of the HHH-58557  issue that was fixed starting with Hibernate 5.0.8
+
+
+### Preserving the Order of the Result Set
+
+It’s a well-known fact that java.util.ArrayList preserves the order of inserted elements while java.util.HashSet doesn’t.
+
+In other words, java.util.ArrayList has a predefined entry order of elements, while java.util.HashSet is, by default, unordered
+
+There are at least two ways to order the result set by the given columns defined by JPA specification
+
+1. Use @OrderBy to ask the database to order the fetched data by the given columns (appends the ORDER BY clause in the generated SQL query to retrieve the entities in a specific order) and Hibernate to preserve this order
+2. Use @OrderColumn to permanently order this via an extra column (in this case, stored in the junction table).
+
+This annotation (@OrderBy) can be used with @OneToMany/@ManyToMany associations and @ElementCollection. Adding @OrderBy without an explicit column will result in ordering the entities ascending by their primary key (ORDER BY author1\_.id ASC).
+
+Ordering by multiple columns is possible as well (e.g., order descending by age and ascending by name, @OrderBy("age DESC, name ASC"). Obviously, @OrderBy can be used with java.util.List as well.
+
+#### Using @OrderBy
+
+Consider the data snapshot in Figure
+
+![image.png](assets/imageseven.png)
+
+
+There is a book written by six authors. The goal is to fetch the authors in descending order by name via Book#getAuthors(). This can be done by adding @OrderBy in Book, as shown here:
+
+```
+@ManyToMany(mappedBy = "books")
+@OrderBy("name DESC")
+private Setauthor authors = new HashSet<>();
+```
+
+When getAuthors() is called, the @OrderBy will:
+
+1. Attach the corresponding ORDER BY clause to the triggered SQL. This will instruct the database to order the fetched data.
+2. Signal to Hibernate to preserve the order. Behind the scenes, Hibernate will preserve the order via a LinkedHashSet
+
+So, calling getAuthors() will result in a Set of authors conforming to the @OrderBy information. The triggered SQL is the following SELECT containing the ORDER BY clause:
+
+```
+SELECT
+authors0_.book_id AS book_id2_1_0_,
+authors0_.author_id AS author_i1_1_0_,
+author1_.id AS id1_0_1_,
+author1_.age AS age2_0_1_,
+author1_.genre AS genre3_0_1_,
+author1_.name AS name4_0_1_
+FROM author_book authors0_
+INNER JOIN author author1_
+ON authors0_.author_id = author1_.id
+WHERE authors0_.book_id = ?
+ORDER BY author1_.name DESC
+```
+
+Displaying Set will output the following (via Author#toString()):
+
+```
+Author{id=2, name=Quartis Young, genre=Anthology, age=51},
+Author{id=6, name=Qart Pinkil, genre=Anthology, age=56},
+Author{id=5, name=Martin Leon, genre=Anthology, age=38},
+Author{id=1, name=Mark Janel, genre=Anthology, age=23},
+Author{id=4, name=Katy Loin, genre=Anthology, age=56},
+Author{id=3, name=Alicia Tom, genre=Anthology, age=38}
+```
+
+Using @OrderBy with HashSet will preserve the order of the loaded/fetched Set, but this is not consistent across the transient state. If this is an issue, to get consistency across the transient state as well, consider explicitly using LinkedHashSet instead of HashSet. So, for full consistency, use:
+
+```
+@ManyToMany(mappedBy = "books")
+@OrderBy("name DESC")
+private Setauthor authors = new LinkedHashSet<>();
+```

@@ -39,4 +39,9 @@ class AuthorServiceTest {
     void deleteBook() {
         authorService.deleteBook();
     }
+
+    @Test
+    void fetchAuthors() {
+        authorService.fetchAuthors();
+    }
 }
