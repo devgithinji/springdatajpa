@@ -29,4 +29,9 @@ class AuthorServiceTest {
     void deleteFirstBook() {
         authorService.deleteFirstBook();
     }
+
+    @Test
+    void insertNewBookDc() {
+        authorService.insertNewBookDc();
+    }
 }

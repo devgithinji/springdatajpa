@@ -1,9 +1,6 @@
 package com.densoft.springdatajpabestpractices.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -22,6 +19,9 @@ public class Book implements Serializable {
     private Long id;
     private String title;
     private String isbn;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id")
+    private Author author;
 
 
     @Override
