@@ -8,6 +8,8 @@ public class SpringDataJpaBestpracticesApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(SpringDataJpaBestpracticesApplication.class, args);
+
+
     }
 
 }
