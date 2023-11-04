@@ -978,7 +978,6 @@ In the context of this statement, the entity removal (or reordering) results in 
 
 Let’s assume that Author and Book involved in a bidirectional lazy @ManyToMany association are mapped via java.util.List, as shown here (only the relevant code is listed):
 
-
 ```
 @Entity
 public class AuthorList implements Serializable {
@@ -992,7 +991,6 @@ private Listbooklist books = new ArrayList<>();
 ...
 }
 ```
-
 
 ```
 @Entity
@@ -1012,6 +1010,7 @@ alicia.removeBook(oneDay);
 
 The SQL statements triggered by this deletion are:
 
+```
 DELETE FROM author_book_list
 WHERE author_id = ?
 Binding: [1]
@@ -1021,5 +1020,48 @@ Binding: [1, 1]
 INSERT INTO author_book_list (author_id, book_id)
 VALUES (?, ?)
 Binding: [1, 3]
+```
 
 So, the removal didn’t materialized in a single SQL statement. Actually, it started by deleting all junction entries of alicia from the junction table. Further, the junction entries that were not the subject of removal were reinserted to reflect the in-memory content (Persistence Context). The more junction entries reinserted, the longer the database transaction.
+
+### Using set
+
+Consider switching from List to Set as follows:
+
+```
+@Entity
+public class AuthorSet implements Serializable {
+...
+@ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+@JoinTable(name = "author_book_set",
+joinColumns = @JoinColumn(name = "author_id"),
+inverseJoinColumns = @JoinColumn(name = "book_id")
+)
+private Setbookset books = new HashSet<>();
+...
+}
+```
+
+```
+@Entity
+public class BookSet implements Serializable {
+...
+@ManyToMany(mappedBy = "books")
+private Setauthorset authors = new HashSet<>();
+...
+}
+```
+
+This time, calling alicia.removeBook(oneDay) will trigger the following SQL DELETE statement:
+
+```
+DELETE FROM author_book_set
+WHERE author_id = ?
+AND book_id = ?
+Binding: [1, 2]
+```
+
+This is much better since a single DELETE statement is needed to accomplish the job.
+
+
+When using the @ManyToMany annotation, always use a java.util.Set. Do not use the java.util.List. In the case of other associations, use the one that best fits your case. If you go with List, do not forget to be aware of the HHH-58557  issue that was fixed starting with Hibernate 5.0.8

@@ -6,7 +6,9 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.*;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
 
 @Entity
 @Getter
@@ -27,7 +29,7 @@ public class Author implements Serializable {
             joinColumns = @JoinColumn(name = "author_id"),
             inverseJoinColumns = @JoinColumn(name = "book_id")
     )
-    private List<Book> books = new ArrayList<>();
+    private Set<Book> books = new HashSet<>();
 
 
     public void addBook(Book book) {
