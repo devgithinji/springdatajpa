@@ -886,7 +886,6 @@ This time, the well-known Author and Book entities are involved in a bidirection
 
 ![image.png](assets/imagefive.png)
 
-
 The bidirectional @ManyToMany association can be navigated from both sides, therefore, both sides can be parents (parent-side).
 
 Since both are parents, none of them will hold a foreign key. In this association, there are two foreign keys that are stored in a separate table, known as the junction or join table. The junction table is hidden and it plays the child-side role.
@@ -940,10 +939,12 @@ The orphan removal (orphanRemoval) option is defined on @OneToOne and @OneToMany
 
 Explicitly setting up the join table name and the columns names allows the developer to reference them without confusion. This can be done via @JoinTable as in the following example:
 
+```
 @JoinTable(name = "author_book",
 joinColumns = @JoinColumn(name = "author_id"),
 inverseJoinColumns = @JoinColumn(name = "book_id")
 )
+```
 
 #### Using Lazy Fetching on Both Sides of the Association
 
@@ -959,5 +960,66 @@ For bidirectional @ManyToMany associations, these methods should be overridden o
 
 If toString() needs to be overridden, involve only the basic attributes fetched when the entity is loaded from the database. Involving lazy attributes or associations will trigger separate SQL statements for fetching the corresponding data.
 
-
 Alternatively, @ManyToMany can be replaced with two bidirectional @OneToMany associations. In other words, the junction table can be mapped to an entity.
+
+## Why Set Is Better than List in @ManyToMany
+
+First of all, keep in mind that Hibernate deals with @ManyToMany relationships as two unidirectional @OneToMany associations.
+
+The owner-side and the child-side (the junction table) represents one unidirectional @OneToMany association.
+
+On the other hand, the non-owner-side and the child-side (the junction table) represent another unidirectional @OneToMany association.
+
+Each association relies on a foreign key stored in the junction table
+
+In the context of this statement, the entity removal (or reordering) results in deleting all junction entries from the junction table and reinserts them to reflect the memory content (the current Persistence Context content).
+
+### Using List
+
+Let’s assume that Author and Book involved in a bidirectional lazy @ManyToMany association are mapped via java.util.List, as shown here (only the relevant code is listed):
+
+
+```
+@Entity
+public class AuthorList implements Serializable {
+...
+@ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+@JoinTable(name = "author_book_list",
+joinColumns = @JoinColumn(name = "author_id"),
+inverseJoinColumns = @JoinColumn(name = "book_id")
+)
+private Listbooklist books = new ArrayList<>();
+...
+}
+```
+
+
+```
+@Entity
+public class BookList implements Serializable {
+...
+@ManyToMany(mappedBy = "books")
+private Listauthorlist authors = new ArrayList<>();
+...
+}
+```
+
+![image.png](assets/imagesix.png?t=1699124868575)
+
+The goal is to remove the book called One Day (the book with ID of 2) written by the author, Alicia Tom (the author with ID 1). Considering that the entity representing this author is stored via a variable named alicia, and the book is stored via a variable named oneDay, the deletion can be done via removeBook() as follows:
+
+alicia.removeBook(oneDay);
+
+The SQL statements triggered by this deletion are:
+
+DELETE FROM author_book_list
+WHERE author_id = ?
+Binding: [1]
+INSERT INTO author_book_list (author_id, book_id)
+VALUES (?, ?)
+Binding: [1, 1]
+INSERT INTO author_book_list (author_id, book_id)
+VALUES (?, ?)
+Binding: [1, 3]
+
+So, the removal didn’t materialized in a single SQL statement. Actually, it started by deleting all junction entries of alicia from the junction table. Further, the junction entries that were not the subject of removal were reinserted to reflect the in-memory content (Persistence Context). The more junction entries reinserted, the longer the database transaction.

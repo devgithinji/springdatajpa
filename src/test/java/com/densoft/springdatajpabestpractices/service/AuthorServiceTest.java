@@ -34,4 +34,9 @@ class AuthorServiceTest {
     void insertNewBookDc() {
         authorService.insertNewBookDc();
     }
+
+    @Test
+    void deleteBook() {
+        authorService.deleteBook();
+    }
 }

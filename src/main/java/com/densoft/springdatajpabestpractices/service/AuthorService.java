@@ -44,8 +44,6 @@ public class AuthorService {
 
         authorRepo.save(jn);
 
-
-        bookRepo.saveAll(List.of(jn01, jn02, jn03));
     }
 
     @Transactional
@@ -86,6 +84,13 @@ public class AuthorService {
         List<Book> books = new ArrayList<>(author.getBooks());
         author.removeBook(books.get(0));
         authorRepo.save(author);
+    }
+
+    @Transactional
+    public void deleteBook(){
+        Author author = authorRepo.fetchByName("Joana Nimar");
+        Book book = bookRepo.findById(2L).get();
+        author.removeBook(book);
     }
 
 }
