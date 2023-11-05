@@ -17,11 +17,14 @@ public interface AuthorRepo extends JpaRepository<Author, Long> {
 
     List<Author> findByAge(int age);
 
+
+    @Query("SELECT a FROM Author a LEFT JOIN Book b ON a.id = b.author.id WHERE a.name = :name")
+    Author findByNameWithBooks(@Param("name") String name);
+
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM Author a WHERE a.id = ?1")
     int deleteByIdentifier(Long id);
-
 
 
 }

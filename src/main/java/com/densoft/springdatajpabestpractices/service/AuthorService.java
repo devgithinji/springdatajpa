@@ -56,9 +56,7 @@ public class AuthorService {
         pk.addBook(pk01);
         pk.addBook(pk02);
 
-        authorRepo.saveAll(List.of(jn,pk));
-
-
+        authorRepo.saveAll(List.of(jn, pk));
 
 
     }
@@ -83,6 +81,18 @@ public class AuthorService {
         List<Author> authors = authorRepo.findByAge(34);
         bookRepo.deleteBulkByAuthors(authors);
         authorRepo.deleteAllInBatch(authors);
+    }
+
+    @Transactional
+    public void deleteViaDeleteInBatch() {
+        Author author = authorRepo.findByNameWithBooks("Joana Nimar");
+//      deleteAllInBatch does not flush or clear the persistence context it may leave the persistence context in outdated state
+//        no problem here cause after the deletion operations the transaction commits
+        bookRepo.deleteAllInBatch(author.getBooks());
+        authorRepo.deleteAllInBatch(List.of(author));
+// later on, we forgot that this author was deleted
+        author.setGenre("Anthology");
+
     }
 
 

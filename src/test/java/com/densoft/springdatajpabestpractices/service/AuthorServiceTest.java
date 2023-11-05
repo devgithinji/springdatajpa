@@ -30,4 +30,8 @@ class AuthorServiceTest {
         authorService.deleteViaBulkIn();
     }
 
+    @Test
+    void deleteViaDeleteInBatch() {
+        authorService.deleteViaDeleteInBatch();
+    }
 }
