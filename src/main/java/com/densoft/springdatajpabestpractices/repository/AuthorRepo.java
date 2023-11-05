@@ -7,14 +7,21 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 public interface AuthorRepo extends JpaRepository<Author, Long> {
     @Query("SELECT a FROM Author a WHERE a.name = :name")
     Author fetchByName(@Param("name") String name);
 
     Author findByName(String name);
 
+    List<Author> findByAge(int age);
+
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM Author a WHERE a.id = ?1")
     int deleteByIdentifier(Long id);
+
+
+
 }

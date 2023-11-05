@@ -24,4 +24,10 @@ class AuthorServiceTest {
     void deleteViaIdentifiers() {
         authorService.deleteViaIdentifiers();
     }
+
+    @Test
+    void deleteViaBulkIn() {
+        authorService.deleteViaBulkIn();
+    }
+
 }

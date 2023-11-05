@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class AuthorService {
@@ -37,7 +39,27 @@ public class AuthorService {
         jn.addBook(jn02);
         jn.addBook(jn03);
 
-        authorRepo.save(jn);
+
+        Author pk = new Author();
+        pk.setName("Paul kamau");
+        pk.setAge(34);
+        pk.setGenre("Education");
+
+        Book pk01 = new Book();
+        pk01.setIsbn("001-PK");
+        pk01.setTitle("Geography");
+
+        Book pk02 = new Book();
+        pk02.setIsbn("002-PK");
+        pk02.setTitle("Religion");
+
+        pk.addBook(pk01);
+        pk.addBook(pk02);
+
+        authorRepo.saveAll(List.of(jn,pk));
+
+
+
 
     }
 
@@ -54,6 +76,13 @@ public class AuthorService {
         authorRepo.deleteByIdentifier(author.getId());
 //        alternative
 //        authorRepo.deleteAllInBatch(List.of(author));
+    }
+
+    @Transactional
+    public void deleteViaBulkIn() {
+        List<Author> authors = authorRepo.findByAge(34);
+        bookRepo.deleteBulkByAuthors(authors);
+        authorRepo.deleteAllInBatch(authors);
     }
 
 
