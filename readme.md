@@ -1836,3 +1836,98 @@ Author author = typedQuery.getSingleResult();
 
 
 You can create an entity graph via the EntityManager#createEntityGraph() method.
+
+## How to Fetch Associations via Entity Sub-Graphs
+
+Entity graphs are prone to performance penalties as well. Creating big trees of entities (e.g., sub-graphs that have sub-graphs) or loading associations (and/or fields) that are not needed will cause performance penalties. Think about how easy it is to create Cartesian products of type m x n x p x..., which grow to huge values very fast.
+
+Sub-graphs allow you to build complex entity graphs. Mainly, a sub-graph is an entity graph that is embedded into another entity graph or entity sub-graph.
+
+Let’s look at three entities—Author, Book, and Publisher. The Author and Book entities are involved in a bidirectional lazy @OneToMany association. The Publisher and Book entities are also involved in a bidirectional lazy @OneToMany association.
+
+Between Author and Publisher there is no association.
+
+![image.png](assets/imagedwrw.png)
+
+The goal of this entity graph is to fetch all authors with associated books, and further, the publishers associated with these books. For this, let’s use the entity sub-graphs.
+
+### Using @NamedEntityGraph and @NamedSubgraph
+
+In the Author entity use the @NamedEntityGraph to define the entity graph to eagerly load the authors and the associated books and @NamedSubgraph to define the entity sub-graph for loading the publishers associated with the loaded books:
+
+```
+@Entity
+@NamedEntityGraph(
+name = "author-books-publisher-graph",
+attributeNodes = {
+@NamedAttributeNode(value = "books", subgraph = "publisher-subgraph")
+},
+subgraphs = {
+@NamedSubgraph(
+name = "publisher-subgraph",
+attributeNodes = {
+@NamedAttributeNode("publisher")
+}
+)
+}
+)
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+// getters and setters omitted for brevity
+}
+```
+
+And the relevant part from Book is listed here:
+
+@Entity
+public class Book implements Serializable {
+...
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "publisher_id")
+private Publisher publisher;
+...
+}
+
+Further, let’s use the entity graph in AuthorRepository:
+
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+@Override
+@EntityGraph(value = "author-books-publisher-graph",
+type = EntityGraph.EntityGraphType.FETCH)
+public List<Author> findAll();
+}
+
+Calling findAll() triggers the following SQL SELECT statement:
+
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+publisher2_.id AS id1_2_2_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.publisher_id AS publishe5_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__,
+publisher2_.company AS company2_2_2_
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+LEFT OUTER JOIN publisher publisher2_
+ON books1_.publisher_id = publisher2_.id
+
+Although it’s quite obvious, let’s mention that sub-graphs can be used with the Query Builder mechanism, Specification, and JPQL. For example, here’s the sub-graph used with JPQL:

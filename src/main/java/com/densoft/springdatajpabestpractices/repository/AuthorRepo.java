@@ -18,7 +18,7 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
 
 
     @Override
-    @EntityGraph(attributePaths = {"books"},
+    @EntityGraph(value = "author-books-publisher-graph",
             type = EntityGraph.EntityGraphType.FETCH)
     List<Author> findAll();
 
@@ -27,10 +27,11 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
             type = EntityGraph.EntityGraphType.FETCH)
     List<Author> findByAgeLessThanOrderByNameDesc(int age);
 
-    @EntityGraph(value = "author-books-graph",
+
+    @EntityGraph(value = "author-books-publisher-graph",
             type = EntityGraph.EntityGraphType.FETCH)
-    @Query(value="SELECT a FROM Author a WHERE a.age > 20 AND a.age < 40")
-    List<Author> fetchAllAgeBetween20And40();
+    @Query(value="SELECT a FROM Author a WHERE a.age > 20 AND a.age<40")
+    public List<Author> fetchAllAgeBetween20And40();
 
     @Override
     @Modifying(clearAutomatically = true)
