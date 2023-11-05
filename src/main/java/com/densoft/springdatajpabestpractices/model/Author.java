@@ -13,6 +13,12 @@ import java.util.List;
 @Entity
 @Getter
 @Setter
+@NamedEntityGraph(
+        name = "author-books-graph",
+        attributeNodes = {
+                @NamedAttributeNode("books")
+        }
+)
 public class Author implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;

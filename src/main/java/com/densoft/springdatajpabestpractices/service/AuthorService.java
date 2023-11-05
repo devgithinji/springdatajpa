@@ -108,4 +108,9 @@ public class AuthorService {
         bookRepo.deleteBulkByAuthorIdentifier(authorsIds);
         authorRepo.deleteBulkByIdentifier(authorsIds);
     }
+
+    @Transactional
+    public void findAllAuthors() {
+        authorRepo.findAll();
+    }
 }

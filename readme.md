@@ -1464,3 +1464,91 @@ If you don’t want/need to flush and/or clear then pay attention to how you man
 As long as you know what you are doing, it’s not problematic to not flush and/or clear the Persistence Context. Ideally isolate bulk operations in dedicated transactional service-methods. This way, there is no need to explicitly flush and clear the Persistence Context. Issues may arise when you interleave bulk operations with managed entity operations.
 
 The most efficient way to delete all entities is via the built-in deleteAllInBatch(), which trigger a bulk operation.
+
+## How to Fetch Associations via JPA Entity Graphs
+
+Now, in a nutshell, entity graphs (aka, fetch plans) were introduced in JPA 2.1 and they help you improve the performance of loading entities by solving lazy loading exceptions and N+1 issues.
+
+The developer specifies the entity’s related associations and basic fields that should be loaded in a single SELECT statement. The developer can define multiple entity graphs for the same entity and can chain any number of entities, and even use sub-graphs to create complex fetch plans. Entity graphs are global and reusable across the entities (Domain Model).
+
+To override the current FetchType semantics, there are two properties that you can set:
+
+1. Fetch graph: This is the default fetching type represented by the javax.persistence.fetchgraph property. The attributes present in attributeNodes are treated as FetchType.EAGER. The remaining attributes are treated as FetchType.LAZY, regardless of the default/ explicit FetchType.
+2. Load graph: This fetching type can be employed via the javax. persistence.loadgraph property. The attributes present in attributeNodes are treated as FetchType.EAGER. The remaining attributes are treated according to their specified or default FetchType.
+
+An entity graph can be defined via annotations (e.g., @NamedEntityGraph)), via attributePaths (ad hoc entity graphs), and via the EntityManager API by calling the getEntityGraph() or createEntityGraph() methods.
+
+Assume the Author and Book entities involved in a bidirectional lazy @OneToMany association. The entity graph (a fetch graph) should load all Authors and the associated Books in the same SELECT. The same thing can be obtained via JOIN FETCH, but this time let’s do it via entity graphs.
+
+### Defining an Entity Graph via @NamedEntityGraph
+
+The @NamedEntityGraph annotation occurs at entity-level. Via its elements, the developer can specify a unique name for this entity graph (via the name element) and the attributes to include when fetching the entity graph (via the attributeNodes element, which contains a list of @NamedAttributeNode annotations separated by commas; each @NamedAttributeNode from this list corresponds to a field/association that should be fetched).
+
+Let’s put the entity graph in code in the Author entity:
+
+```
+@Entity
+@NamedEntityGraph(
+name = "author-books-graph",
+attributeNodes = {
+@NamedAttributeNode("books")
+}
+)
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+// getters and setters omitted for brevity
+}
+```
+
+Next, focus on the repository of the Author entity, AuthorRepository.
+
+The AuthorRepository is the place where the entity graph should be specified. Spring Data provides support for entity graphs via the @EntityGraph annotation (the class of this annotation is org.springframework.data.jpa.repository.EntityGraph).
+
+### Overriding a Query Method
+
+For example, the code to use the entity graph (author-books-graph) to find all Authors, including the associated Book, is as follows
+
+EntityGraph.EntityGraphType.FETCH is the default and indicates a fetch graph;
+
+EntityGraph.EntityGraphType.LOAD can be specified for a load graph;
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+@Override
+@EntityGraph(value = "author-books-graph",
+type = EntityGraph.EntityGraphType.FETCH)
+public Listauthor findAll();
+}
+```
+
+Calling the findAll() method will result in the following SQL SELECT statement:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+```
+
+Notice that the generated query took into account the entity graph specified via @EntityGraph.

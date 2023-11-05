@@ -44,4 +44,9 @@ class AuthorServiceTest {
     void deleteViaBulkHardCodedIdentifiers() {
         authorService.deleteViaBulkHardCodedIdentifiers();
     }
+
+    @Test
+    void findAllAuthors() {
+        authorService.findAllAuthors();
+    }
 }

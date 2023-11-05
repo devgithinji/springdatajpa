@@ -1,6 +1,7 @@
 package com.densoft.springdatajpabestpractices.repository;
 
 import com.densoft.springdatajpabestpractices.model.Author;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +17,10 @@ public interface AuthorRepo extends JpaRepository<Author, Long> {
     Author findByName(String name);
 
     List<Author> findByAge(int age);
+
+    @Override
+    @EntityGraph(value = "author-books-graph", type = EntityGraph.EntityGraphType.FETCH)
+    List<Author> findAll();
 
     @Override
     @Modifying(clearAutomatically = true)
