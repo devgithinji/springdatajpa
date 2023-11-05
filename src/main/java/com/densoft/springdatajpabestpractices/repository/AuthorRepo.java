@@ -22,6 +22,10 @@ public interface AuthorRepo extends JpaRepository<Author, Long> {
     @EntityGraph(value = "author-books-graph", type = EntityGraph.EntityGraphType.FETCH)
     List<Author> findAll();
 
+    @EntityGraph(value = "author-books-graph",
+            type = EntityGraph.EntityGraphType.FETCH)
+    List<Author> findByAgeLessThanOrderByNameDesc(int age);
+
     @Override
     @Modifying(clearAutomatically = true)
     void deleteAllInBatch(Iterable<Author> entities);

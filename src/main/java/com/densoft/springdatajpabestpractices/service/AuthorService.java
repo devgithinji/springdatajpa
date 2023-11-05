@@ -43,7 +43,7 @@ public class AuthorService {
 
         Author pk = new Author();
         pk.setName("Paul kamau");
-        pk.setAge(34);
+        pk.setAge(20);
         pk.setGenre("Education");
 
         Book pk01 = new Book();
@@ -112,5 +112,10 @@ public class AuthorService {
     @Transactional
     public void findAllAuthors() {
         authorRepo.findAll();
+    }
+
+    @Transactional
+    public void findAllAuthorsWhereAgeIsGreaterThan() {
+        authorRepo.findByAgeLessThanOrderByNameDesc(25);
     }
 }

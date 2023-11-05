@@ -1552,3 +1552,28 @@ ON author0_.id = books1_.author_id
 ```
 
 Notice that the generated query took into account the entity graph specified via @EntityGraph.
+
+### Using the Query Builder Mechanism
+
+Overriding findAll() is a convenient way to fetch all entities. But, use the Spring Data Query Builder mechanism to filter the fetched data via the WHERE clause. For example, you can fetch the entity graph for authors younger than the given age and in descending order by name as follows:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+@EntityGraph(value = "author-books-graph",
+type = EntityGraph.EntityGraphType.FETCH)
+public Listauthor findByAgeLessThanOrderByNameDesc(int age);
+}
+```
+
+
+The generated SQL SELECT statement is shown here:
+
+SELECT
+...
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.age < ?
+ORDER BY author0_.name DESC
