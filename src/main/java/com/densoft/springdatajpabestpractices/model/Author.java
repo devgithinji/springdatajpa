@@ -6,13 +6,19 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Set;
+import java.util.List;
 
 @Entity
 @Getter
 @Setter
+@NamedEntityGraph(
+        name = "author-books-graph",
+        attributeNodes = {
+                @NamedAttributeNode("books")
+        }
+)
 public class Author implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
@@ -24,36 +30,33 @@ public class Author implements Serializable {
     private String genre;
     private int age;
 
-    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
-    @JoinTable(name = "author_book",
-            joinColumns = @JoinColumn(name = "author_id"),
-            inverseJoinColumns = @JoinColumn(name = "book_id")
-    )
-    private Set<Book> books = new HashSet<>();
+    @OneToMany(cascade = CascadeType.ALL,
+            mappedBy = "author", orphanRemoval = true)
+    private List<Book> books = new ArrayList<>();
 
 
     public void addBook(Book book) {
         this.books.add(book);
-        book.getAuthors().add(this);
+        book.setAuthor(this);
     }
 
     public void removeBook(Book book) {
+        book.setAuthor(null);
         this.books.remove(book);
-        book.getAuthors().remove(this);
     }
 
     public void removeBooks() {
         Iterator<Book> iterator = this.books.iterator();
         while (iterator.hasNext()) {
             Book book = iterator.next();
-            book.getAuthors().remove(this);
+            book.setAuthor(null);
             iterator.remove();
         }
     }
 
     @Override
     public boolean equals(Object obj) {
-        if(obj == null) {
+        if (obj == null) {
             return false;
         }
         if (this == obj) {
