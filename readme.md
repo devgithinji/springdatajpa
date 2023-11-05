@@ -1795,9 +1795,7 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 ```
 
-
 Ad hoc entity graphs are a convenient way to keep the entity graph definition at the repository-level and not alter the entities with @NamedEntityGraph.
-
 
 ### Defining an Entity Graph via EntityManager
 
@@ -1833,7 +1831,6 @@ TypedQueryauthor typedQuery = entityManager.createQuery(criteriaQuery);
 typedQuery.setHint("javax.persistence.loadgraph", entityGraph);
 Author author = typedQuery.getSingleResult();
 ```
-
 
 You can create an entity graph via the EntityManager#createEntityGraph() method.
 
@@ -1888,6 +1885,8 @@ private Listbook books = new ArrayList<>();
 
 And the relevant part from Book is listed here:
 
+
+```
 @Entity
 public class Book implements Serializable {
 ...
@@ -1896,20 +1895,24 @@ public class Book implements Serializable {
 private Publisher publisher;
 ...
 }
+```
 
 Further, let’s use the entity graph in AuthorRepository:
 
+```
 @Repository
 @Transactional(readOnly = true)
-public interface AuthorRepository extends JpaRepository<Author, Long> {
+public interface AuthorRepository extends JpaRepositoryauthor, {
 @Override
 @EntityGraph(value = "author-books-publisher-graph",
 type = EntityGraph.EntityGraphType.FETCH)
-public List<Author> findAll();
+public Listauthor findAll();
 }
+```
 
 Calling findAll() triggers the following SQL SELECT statement:
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 books1_.id AS id1_1_1_,
@@ -1929,5 +1932,53 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 LEFT OUTER JOIN publisher publisher2_
 ON books1_.publisher_id = publisher2_.id
+```
 
 Although it’s quite obvious, let’s mention that sub-graphs can be used with the Query Builder mechanism, Specification, and JPQL. For example, here’s the sub-graph used with JPQL:
+
+### Using the Dot Notation (.) in Ad Hoc Entity Graphs
+
+Sub-graphs can be used in ad hoc entity graphs as well. Remember that ad hoc entity graphs allows you to keep the entity graph definition at repository-level and not alter the entities with @NamedEntityGraph.
+
+To use sub-graphs, you just chain the needed associations using the dot notation (.), as shown in the following example:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+@Override
+@EntityGraph(attributePaths = {"books.publisher"},
+type = EntityGraph.EntityGraphType.FETCH)
+public Listauthor findAll();
+}
+```
+
+So, you can fetch the publishers associated with the books via the books.publisher path. The triggered SELECT is the same as when using @NamedEntityGraph and @ NamedSubgraph.
+
+Let’s look at another example, just to get familiar with this idea. Let’s define an ad hoc entity graph to fetch all publishers and associated books, and further, the authors associated with these books. This time, the entity graph is defined in PublisherRepository as follows:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface PublisherRepository
+extends JpaRepositorypublisher, {
+@Override
+@EntityGraph(attributePaths = "books.author"},
+type = EntityGraph.EntityGraphType.FETCH)
+public Listpublisher findAll();
+}
+```
+
+### Defining an Entity Sub-Graph via EntityManager
+
+You can build an entity sub-graph directly via EntityManager and the EntityGraph. addSubgraph(String attributeName) method, as shown in the following snippet of code:
+
+```
+EntityGraphauthor entityGraph = entityManager
+.createEntityGraph(Author.class);
+Subgraphbook bookGraph = entityGraph.addSubgraph("books");
+bookGraph.addAttributeNodes("publisher");
+Mapstring, properties = new HashMap<>();
+properties.put("javax.persistence.fetchgraph", entityGraph);
+Author author = entityManager.find(Author.class, id, properties);
+```
