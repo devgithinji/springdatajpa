@@ -16,52 +16,12 @@ class AuthorServiceTest {
     }
 
     @Test
-    void deleteViaCascadeRemove() {
-        authorService.deleteViaCascadeRemove();
+    void findByAgeGreaterThanAndGenre() {
+        authorService.findByAgeGreaterThanAndGenre();
     }
 
     @Test
-    void deleteViaIdentifiers() {
-        authorService.deleteViaIdentifiers();
-    }
-
-    @Test
-    void deleteViaBulkIn() {
-        authorService.deleteViaBulkIn();
-    }
-
-    @Test
-    void deleteViaDeleteInBatch() {
-        authorService.deleteViaDeleteInBatch();
-    }
-
-    @Test
-    void deleteViaHardCodedIdentifiers() {
-        authorService.deleteViaHardCodedIdentifiers();
-    }
-
-    @Test
-    void deleteViaBulkHardCodedIdentifiers() {
-        authorService.deleteViaBulkHardCodedIdentifiers();
-    }
-
-    @Test
-    void findAllAuthors() {
-        authorService.findAllAuthors();
-    }
-
-    @Test
-    void findAllAuthorsWhereAgeIsGreaterThan() {
-        authorService.findAllAuthorsWhereAgeIsGreaterThan();
-    }
-
-    @Test
-    void findAllAuthorsWhereAgeIsGreaterThan45Specification() {
-        authorService.findAllAuthorsWhereAgeIsGreaterThan45Specification();
-    }
-
-    @Test
-    void fetchAllAgeBetween20And40() {
-        authorService.fetchAllAgeBetween20And40();
+    void findByGenreAndAgeGreaterThan() {
+        authorService.findByGenreAndAgeGreaterThan();
     }
 }

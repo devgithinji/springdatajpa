@@ -1,6 +1,5 @@
 package com.densoft.springdatajpabestpractices.service;
 
-import com.densoft.springdatajpabestpractices.AuthorSpecs;
 import com.densoft.springdatajpabestpractices.model.Author;
 import com.densoft.springdatajpabestpractices.model.Book;
 import com.densoft.springdatajpabestpractices.model.Publisher;
@@ -11,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -76,73 +74,15 @@ public class AuthorService {
 
         authorRepo.saveAll(List.of(jn, pk));
 
-
     }
 
-    @Transactional
-    public void deleteViaCascadeRemove() {
-        Author author = authorRepo.findByName("Joana Nimar");
-        authorRepo.delete(author);
+    public void findByAgeGreaterThanAndGenre() {
+        authorRepo.findByAgeGreaterThanAndGenre(33, "History");
     }
 
-    @Transactional
-    public void deleteViaIdentifiers() {
-        Author author = authorRepo.findByName("Joana Nimar");
-        bookRepo.deleteByAuthorIdentifier(author.getId());
-        authorRepo.deleteByIdentifier(author.getId());
-//        alternative
-//        authorRepo.deleteAllInBatch(List.of(author));
+    public void findByGenreAndAgeGreaterThan() {
+        authorRepo.findByGenreAndAgeGreaterThan("Education", 15);
     }
 
-    @Transactional
-    public void deleteViaBulkIn() {
-        List<Author> authors = authorRepo.findByAge(34);
-        bookRepo.deleteBulkByAuthors(authors);
-        authorRepo.deleteAllInBatch(authors);
-    }
 
-    @Transactional
-    public void deleteViaDeleteInBatch() {
-        Author author = authorRepo.findByNameWithBooks("Joana Nimar");
-//      deleteAllInBatch does not flush or clear the persistence context it may leave the persistence context in outdated state
-//        no problem here cause after the deletion operations the transaction commits
-        bookRepo.deleteAllInBatch(author.getBooks());
-        authorRepo.deleteAllInBatch(List.of(author));
-// later on, we forgot that this author was deleted
-//        author.setGenre("Anthology");
-
-    }
-
-    @Transactional
-    public void deleteViaHardCodedIdentifiers() {
-        bookRepo.deleteByAuthorIdentifier(1L);
-        authorRepo.deleteByIdentifier(1L);
-    }
-
-    @Transactional
-    public void deleteViaBulkHardCodedIdentifiers() {
-        List<Long> authorsIds = Arrays.asList(1L, 2L);
-        bookRepo.deleteBulkByAuthorIdentifier(authorsIds);
-        authorRepo.deleteBulkByIdentifier(authorsIds);
-    }
-
-    @Transactional
-    public void findAllAuthors() {
-        authorRepo.findAll();
-    }
-
-    @Transactional
-    public void findAllAuthorsWhereAgeIsGreaterThan() {
-        authorRepo.findByAgeLessThanOrderByNameDesc(25);
-    }
-
-    @Transactional
-    public void findAllAuthorsWhereAgeIsGreaterThan45Specification() {
-        authorRepo.findAll(AuthorSpecs.isAgeGt45());
-    }
-
-    @Transactional
-    public void fetchAllAgeBetween20And40() {
-        authorRepo.fetchAllAgeBetween20And40();
-    }
 }

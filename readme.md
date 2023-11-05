@@ -1982,3 +1982,138 @@ Mapstring, properties = new HashMap<>();
 properties.put("javax.persistence.fetchgraph", entityGraph);
 Author author = entityManager.find(Author.class, id, properties);
 ```
+
+## How to Handle Entity Graphs and Basic Attributes
+
+When Hibernate JPA is around, using entity graphs to fetch only some basic attributes of an entity (not all) requires a compromise solution based on:
+
+* Enabling Hibernate Bytecode Enhancement
+* Annotating the basic attributes that should not be part of the
+  entity graph with @Basic(fetch = FetchType.LAZY)
+
+Conforming to JPA specifications, entity graphs can override the current FetchType semantics via two properties—javax.persistence.fetchgraph and javax. persistence.loadgraph. Depending on the used property, the entity graph can be a fetch graph or a load graph. In the case of a fetch graph, the attributes present in attributeNodes are treated as FetchType.EAGER. The remaining attributes are treated as FetchType.LAZY regardless of the default/explicit FetchType. In the case of load graph, the attributes present in attributeNodes are treated as FetchType.EAGER. The remaining attributes are treated according to their specified or default FetchType.
+
+That being said, let’s assume that the Author and Book entities are involved in a bidirectional lazy @OneToMany association. Moreover, in the Author entity, let’s define an entity graph to load the names of the authors and the associated books. There is no need to load the ages and genres of authors, so the age and genre basic fields are not specified in the entity graph:
+
+@Entity
+@NamedEntityGraph(
+name = "author-books-graph",
+attributeNodes = {
+@NamedAttributeNode("name"),
+@NamedAttributeNode("books")
+}
+)
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private List<Book> books = new ArrayList<>();
+// getters and setters omitted for brevity
+}
+
+Let’s use this entity graph in AuthorRepository. To have both in the same repository, you can use two methods via the Query Builder mechanism. It produces almost identical SQL statements named findByAgeGreaterThanAndGenre() and findByGenreAndAgeGreaterThan():
+
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+@EntityGraph(value = "author-books-graph",
+type = EntityGraph.EntityGraphType.FETCH)
+public List<Author> findByAgeGreaterThanAndGenre(int age, String genre);
+@EntityGraph(value = "author-books-graph",
+type = EntityGraph.EntityGraphType.LOAD)
+public List<Author> findByGenreAndAgeGreaterThan(String genre, int age);
+}
+
+Calling the findByAgeGreaterThanAndGenre() triggers the following SQL SELECT statement (this is the fetch graph):
+
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.age > ?
+AND author0_.genre = ?
+
+
+Notice that, even if age and genre are not part of the fetch graph, they have been fetched in the query. Let’s try the load graph via findByGenreAndAgeGreaterThan():
+
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.genre = ?
+AND author0_.age > ?
+
+
+This time the presence of age and genre is normal. But these attributes (age and genre) are also loaded in the case of the fetch graph even if they are not explicitly specified via @ NamedAttributeNode.
+
+By default, attributes are annotated with @Basic, which relies on the default fetch policy. The default fetch policy is FetchType.EAGER. Based on this statement, a compromise solution consists of annotating the basic attributes that should not be fetched in the fetch graph with @Basic(fetch = FetchType.LAZY) as here:
+
+@Basic(fetch = FetchType.LAZY)
+private String genre;
+@Basic(fetch = FetchType.LAZY)
+private int age;
+
+But executing the fetch and load graph again reveals the exactly same queries. This means that the JPA specifications don’t apply to Hibernate with the basic (@Basic) attributes. Both the fetch graph and the load graph will ignore these settings as long as Bytecode Enhancement is not enabled. In Maven, add the following plug-in:
+
+![image.png](assets/imageasfsdds.png)
+
+Finally, executing the fetch graph will reveal the expected SELECT:
+
+
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.age > ?
+AND author0_.genre = ?
+
+Executing the load graph will reveal the expected SELECT as well:
+
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.genre = ?
+AND author0_.age > ?
