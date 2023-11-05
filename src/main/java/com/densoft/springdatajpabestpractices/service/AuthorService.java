@@ -91,7 +91,7 @@ public class AuthorService {
         bookRepo.deleteAllInBatch(author.getBooks());
         authorRepo.deleteAllInBatch(List.of(author));
 // later on, we forgot that this author was deleted
-        author.setGenre("Anthology");
+//        author.setGenre("Anthology");
 
     }
 
