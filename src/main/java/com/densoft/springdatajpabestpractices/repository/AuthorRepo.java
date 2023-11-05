@@ -1,16 +1,14 @@
 package com.densoft.springdatajpabestpractices.repository;
 
 import com.densoft.springdatajpabestpractices.model.Author;
-import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-public interface AuthorRepo extends JpaRepository<Author, Long> {
+public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificationExecutor<Author> {
     @Query("SELECT a FROM Author a WHERE a.name = :name")
     Author fetchByName(@Param("name") String name);
 
@@ -21,6 +19,11 @@ public interface AuthorRepo extends JpaRepository<Author, Long> {
     @Override
     @EntityGraph(value = "author-books-graph", type = EntityGraph.EntityGraphType.FETCH)
     List<Author> findAll();
+
+    @Override
+    @EntityGraph(value = "author-books-graph",
+            type = EntityGraph.EntityGraphType.FETCH)
+    List<Author> findAll(Specification spec);
 
     @EntityGraph(value = "author-books-graph",
             type = EntityGraph.EntityGraphType.FETCH)

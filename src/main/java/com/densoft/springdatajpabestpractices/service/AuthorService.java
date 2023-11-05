@@ -1,5 +1,6 @@
 package com.densoft.springdatajpabestpractices.service;
 
+import com.densoft.springdatajpabestpractices.AuthorSpecs;
 import com.densoft.springdatajpabestpractices.model.Author;
 import com.densoft.springdatajpabestpractices.model.Book;
 import com.densoft.springdatajpabestpractices.repository.AuthorRepo;
@@ -117,5 +118,10 @@ public class AuthorService {
     @Transactional
     public void findAllAuthorsWhereAgeIsGreaterThan() {
         authorRepo.findByAgeLessThanOrderByNameDesc(25);
+    }
+
+    @Transactional
+    public void findAllAuthorsWhereAgeIsGreaterThan45Specification() {
+        authorRepo.findAll(AuthorSpecs.isAgeGt45());
     }
 }

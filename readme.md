@@ -1570,6 +1570,7 @@ public Listauthor findByAgeLessThanOrderByNameDesc(int age);
 
 The generated SQL SELECT statement is shown here:
 
+```
 SELECT
 ...
 FROM author author0_
@@ -1577,3 +1578,47 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 WHERE author0_.age < ?
 ORDER BY author0_.name DESC
+```
+
+### Using Specification
+
+Using Specification is also supported. For example, let’s assume the following classical Specification for generating WHERE age > 45:
+
+```
+public class AuthorSpecs {
+private static final int AGE = 45;
+public static Specificationauthor isAgeGt45() {
+return (Rootauthor root,
+CriteriaQuery? query, CriteriaBuilder builder)
+-> builder.greaterThan(root.get("age"), AGE);
+}
+}
+```
+
+Let’s use this Specification:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor,,
+JpaSpecificationExecutorauthor {
+@Override
+@EntityGraph(value = "author-books-graph",
+type = EntityGraph.EntityGraphType.FETCH)
+public Listauthor findAll(Specification spec);
+}
+```
+
+
+```
+List authors = authorRepository.findAll(isAgeGt45());
+```
+
+The generated SQL SELECT statement is as follows:
+
+SELECT
+...
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.age > 45
