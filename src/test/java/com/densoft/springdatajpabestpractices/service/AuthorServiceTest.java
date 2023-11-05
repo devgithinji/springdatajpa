@@ -16,32 +16,7 @@ class AuthorServiceTest {
     }
 
     @Test
-    void insertNewBook() {
-        authorService.insertNewBook();
-    }
-
-    @Test
-    void deleteLastBook() {
-        authorService.deleteLastBook();
-    }
-
-    @Test
-    void deleteFirstBook() {
-        authorService.deleteFirstBook();
-    }
-
-    @Test
-    void insertNewBookDc() {
-        authorService.insertNewBookDc();
-    }
-
-    @Test
-    void deleteBook() {
-        authorService.deleteBook();
-    }
-
-    @Test
-    void fetchAuthors() {
-        authorService.fetchAuthors();
+    void deleteViaCascadeRemove() {
+        authorService.deleteViaCascadeRemove();
     }
 }

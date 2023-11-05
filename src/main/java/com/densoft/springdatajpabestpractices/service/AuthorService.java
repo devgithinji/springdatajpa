@@ -8,10 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-
 @Service
 @RequiredArgsConstructor
 public class AuthorService {
@@ -43,72 +39,13 @@ public class AuthorService {
 
         authorRepo.save(jn);
 
-        Author authortwo = new Author();
-        authortwo.setName("dennis");
-        authortwo.setAge(23);
-        authortwo.setGenre("tech");
-        authortwo.addBook(jn01);
-        authorRepo.save(authortwo);
-
-        Author authorthree = new Author();
-        authorthree.setName("paul");
-        authorthree.setAge(25);
-        authorthree.setGenre("biology");
-        authorthree.addBook(jn01);
-        authorRepo.save(authorthree);
-
     }
 
     @Transactional
-    public void insertNewBook() {
-        Author author = authorRepo.getReferenceById(1L);
-        Book book = new Book();
-        book.setIsbn("003-JN");
-        book.setTitle("History Of Present");
-
-        author.addBook(book);
+    public void deleteViaCascadeRemove() {
+        Author author = authorRepo.findByName("Joana Nimar");
+        authorRepo.delete(author);
     }
 
-    @Transactional
-    public void insertNewBookDc() {
-        Author author = authorRepo.getReferenceById(1L);
-        Book book = new Book();
-        book.setIsbn("004-JN");
-        book.setTitle("History Of Past");
-
-        author.addBook(book);
-
-        book.setIsbn("not available");
-    }
-
-    @Transactional
-    public void deleteLastBook() {
-        Author author = authorRepo.fetchByName("Joana Nimar");
-        System.out.println(author.getBooks());
-        List<Book> books = new ArrayList<>(author.getBooks());
-        // use removeBook() helper
-        author.removeBook(books.get(books.size() - 1));
-//        authorRepo.save(author);
-    }
-
-    @Transactional
-    public void deleteFirstBook() {
-        Author author = authorRepo.fetchByName("Joana Nimar");
-        List<Book> books = new ArrayList<>(author.getBooks());
-        author.removeBook(books.get(0));
-        authorRepo.save(author);
-    }
-
-    @Transactional
-    public void deleteBook(){
-        Author author = authorRepo.fetchByName("Joana Nimar");
-        Book book = bookRepo.findById(2L).get();
-        author.removeBook(book);
-    }
-    @Transactional
-    public void fetchAuthors(){
-        Book book = bookRepo.findById(1L).get();
-        book.getAuthors().forEach(System.out::println);
-    }
 
 }

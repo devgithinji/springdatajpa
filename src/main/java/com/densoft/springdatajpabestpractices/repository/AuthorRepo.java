@@ -8,4 +8,6 @@ import org.springframework.data.repository.query.Param;
 public interface AuthorRepo extends JpaRepository<Author, Long> {
     @Query("SELECT a FROM Author a WHERE a.name = :name")
     Author fetchByName(@Param("name") String name);
+
+    Author findByName(String name);
 }

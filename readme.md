@@ -1063,9 +1063,7 @@ Binding: [1, 2]
 
 This is much better since a single DELETE statement is needed to accomplish the job.
 
-
 When using the @ManyToMany annotation, always use a java.util.Set. Do not use the java.util.List. In the case of other associations, use the one that best fits your case. If you go with List, do not forget to be aware of the HHH-58557  issue that was fixed starting with Hibernate 5.0.8
-
 
 ### Preserving the Order of the Result Set
 
@@ -1087,7 +1085,6 @@ Ordering by multiple columns is possible as well (e.g., order descending by age 
 Consider the data snapshot in Figure
 
 ![image.png](assets/imageseven.png)
-
 
 There is a book written by six authors. The goal is to fetch the authors in descending order by name via Book#getAuthors(). This can be done by adding @OrderBy in Book, as shown here:
 
@@ -1137,3 +1134,333 @@ Using @OrderBy with HashSet will preserve the order of the loaded/fetched Set, b
 @OrderBy("name DESC")
 private Setauthor authors = new LinkedHashSet<>();
 ```
+
+## Why and When to Avoid Removing Child Entities with CascadeType.Remove and orphanRemoval=true
+
+First of all, let’s quickly highlight the differences between CascadeType.REMOVE and orphanRemoval=true
+
+Let’s use the Author and Book entities involved in a bidirectional lazy @OneToMany association, written as follows:
+
+```
+// in Author.java
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)                                                                                                               private List books = new ArrayList<>();// in Book.java
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+```
+
+Removing an Author entity is automatically cascaded to the associated Book entities. This is happening as long as CascadeType.REMOVE or orphanRemoval=true is present. In other words, from this perspective, the presence of both is redundant.
+
+Then how are they different? Well, consider the following helper-method used to disconnect (or disassociate) a Book from its Author:
+
+```
+public void removeBook(Book book) {
+book.setAuthor(null);
+this.books.remove(book);
+}
+```
+
+Or, to disconnect all Books from their Authors:
+
+```
+public void removeBooks() {
+Iteratorbook iterator = this.books.iterator();
+while (iterator.hasNext()) {
+Book book = iterator.next();
+book.setAuthor(null);
+iterator.remove();
+}
+}
+```
+
+Calling the removeBook() method in the presence of orphanRemoval=true will result in automatically removing the book via a DELETE statement.
+
+Calling it in the presence of orphanRemoval=false will trigger an UPDATE statement.
+
+Since disconnecting a Book is not a remove operation, the presence of CascadeType.REMOVE doesn’t matter.
+
+So, orphanRemoval=true is useful for cleaning up entities (remove dangling references) that should not exist without a reference from an owner entity (Author).
+
+But how efficient are these settings? The short answer is: not very efficient if they must affect a significant number of entities.
+
+The long answer starts by deleting an author in the following service-method (this author has three associated books):
+
+```
+@Transactional
+public void deleteViaCascadeRemove() {
+Author author = authorRepository.findByName("Joana Nimar");
+authorRepository.delete(author);
+}
+```
+
+Deleting an author will cascade the deletion to the associated books. This is the effect of CascadeType.ALL, which includes CascadeType.REMOVE. But, before deleting the associated books, they are loaded in the Persistence Context via a SELECT. If they are already in the Persistence Context then they are not loaded. If the books are not present in the Persistence Context then CascadeType.REMOVE will not take effect. Further, there are four DELETE statements, one for deleting the author and three for deleting the associated books:
+
+```
+DELETE
+FROM book
+WHERE id=?
+Binding:[1]
+DELETE
+FROM book
+WHERE id=?
+Binding:[2]
+DELETE
+FROM book
+WHERE id=?
+Binding:[4]
+DELETE
+FROM author
+WHERE id=?
+Binding:[4]
+```
+
+For each book there is a separate DELETE statement. The more books there are to delete, the more DELETE statements you have and the larger the performance penalty.
+
+Now let’s write a service-method that deletes based on the orphanRemoval=true. For the sake of variation, this time, we load the author and the associated books in the same SELECT.
+
+```
+@Transactional
+public void deleteViaOrphanRemoval() {
+Author author = authorRepository.findByNameWithBooks("Joana Nimar");
+author.removeBooks();
+authorRepository.delete(author);
+}
+```
+
+Unfortunately, this approach will trigger the exact same DELETE statements as in the case of cascading the deletes, so it’s prone to the same performance penalties.
+
+If your application triggers sporadic deletes, you can rely on CascadeType.REMOVE and/or orphanRemoval=true. This is useful especially if you delete managed entities, so you need Hibernate to manage the entities state transitions. Moreover, via this approach, you benefit from the automatic Optimistic Locking mechanism (e.g., @Version) for parents and children. But, if you are just looking for approaches that delete more efficiently (in fewer DML statements), we will consider a few of them. Of course, each approach has its own trade-offs
+
+The following four approaches delete the authors and the associated books via bulk operations. This way, you can optimize and control the number of triggered DELETE statements. These operations are very fast, but they have three main shortcomings:
+
+1. They ignore the automatic Optimistic Locking mechanism (for example, you cannot rely on @Version anymore)
+2. The Persistence Context is not synchronized to reflect the modifications performed by the bulk operations, which may lead to an outdated context
+3. They don’t take advantage of cascading removals (CascadeType. REMOVE) or orphanRemoval
+
+If these shortcomings matter to you, you have two options: avoid bulk operations or explicitly deal with the problem. The most difficult part is to emulate the job of the automatic Optimistic Locking mechanism for children that are not loaded in the Persistence Context.
+
+The following examples assume that there is no automatic Optimistic Locking mechanism enabled. However, they manage the Persistence Context synchronization issues via flushAutomatically = true and clearAutomatically = true. Do not conclude that these two settings are always needed. Their usage depends on what you want to achieve.
+
+### Deleting Authors that Are Already Loaded in the Persistence Context
+
+Let’s tackle the case when, in the Persistence Context, there is only one Author loaded and the case when there are more Authors loaded, but not all of them. The associated books (which are or aren’t already loaded in the Persistence Context) have to be deleted as well.
+
+### One Author Has Already Been Loaded in the Persistence Context
+
+Let’s assume that the Author that should be deleted was loaded earlier in the Persistence Context without their associated Book. To delete this Author and the associated books, you can use the author identifier (author.getId()). First, delete all the author’s associated books:
+
+```
+// add this method in BookRepository@Transactional
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("DELETE FROM Book b WHERE b.author.id = ?1")
+public int deleteByAuthorIdentifier(Long id);
+```
+
+Then, let’s delete the author by his identifier:
+
+```
+// add this method in AuthorRepository
+@Transactional
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("DELETE FROM Author a WHERE a.id = ?1")
+public int deleteByIdentifier(Long id);
+```
+
+The presence of flushAutomatically = true, clearAutomatically = true is explained a little bit later. For now, the service-method responsible for triggering the deletion is:
+
+```
+@Transactional
+public void deleteViaIdentifiers() {
+Author author = authorRepository.findByName("Joana Nimar");
+bookRepository.deleteByAuthorIdentifier(author.getId());
+authorRepository.deleteByIdentifier(author.getId());
+}
+```
+
+Calling deleteViaIdentifiers() triggers the following queries:
+
+```
+DELETE FROM book
+WHERE author_id = ?
+```
+
+Notice that the associated books are not loaded in the Persistence Context and there are only two DELETE statements triggered. The number of books doesn’t affect the number of DELETE statements. The author can be deleted via the built-in deleteInBatch(Iterable entities) as well:
+
+authorRepository.deleteInBatch(List.of(author));
+
+### More Authors Have Been Loaded in the Persistence Context
+
+Let’s assume that the Persistence Context contains more Authors that should be deleted. For example, let’s delete all Authors of age 34 fetched as a List (let’s assume that there are two authors of age 34).
+
+Trying to delete by author identifier (as in the previous case) will result in a separate DELETE for each author. Moreover, there will be a separate DELETE for the associated books of each author. So this is not efficient.
+
+This time, let’s rely on two bulk operations. One defined by you via the IN operator (which allows you to specify multiple values in a WHERE clause) and the built-in deleteInBatch(Iterable entities):
+
+```
+// add this method in BookRepository
+@Transactional
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("DELETE FROM Book b WHERE b.author IN ?1")
+public int deleteBulkByAuthors(Listauthor authors);
+```
+
+The service-methods to delete a List and the associated Book are as follows:
+
+```
+@Transactional
+public void deleteViaBulkIn() {
+Listauthor authors = authorRepository.findByAge(34);
+bookRepository.deleteBulkByAuthors(authors);
+authorRepository.deleteInBatch(authors);
+}
+```
+
+Calling deleteViaBulkIn() triggers the following queries:
+
+```
+DELETE FROM book
+WHERE author_id IN (?, ?)
+DELETE FROM author
+WHERE id = ?
+OR id = ?
+```
+
+Notice that the associated books are not loaded in the Persistence Context and there are only two DELETE statements triggered. The number of authors and books doesn’t affect the number of DELETE statements.
+
+### One Author and His Associated Books Have Been Loaded in the Persistence Context
+
+Assume that the Author (the one that should be deleted) and his associated Books are already loaded in the Persistence Context. This time there is no need to define bulk operations since the built-in deleteInBatch(Iterable entities) can do the job for you:
+
+```
+@Transactional
+public void deleteViaDeleteInBatch() {
+Author author = authorRepository.findByNameWithBooks("Joana Nimar");
+bookRepository.deleteInBatch(author.getBooks());
+authorRepository.deleteInBatch(List.of(author));
+}
+```
+
+The main shortcoming here is the default behavior of the built-in deleteInBatch(Iterable entities), which, by default, don’t flush or clear the Persistence Context. This may leave the Persistence Context in an outdated state.
+
+Of course, in the previous methods, there is nothing to flush before deletions and no need to clear the Persistence Context because, after the delete operations, the transaction commits.
+
+Therefore the Persistence Context is closed. But, flush and clear (not necessarily both of them) are needed in certain cases. Commonly, the clear operation is needed much more often than the flush operation.
+
+For example, the following method doesn’t need a flush prior to any deletions, but it needs a clear after any deletions. Otherwise it will cause an exception:
+
+```
+@Transactional
+public void deleteViaDeleteInBatch() {
+Author author = authorRepository.findByNameWithBooks("Joana Nimar");
+bookRepository.deleteInBatch(author.getBooks());
+authorRepository.deleteInBatch(List.of(author));
+...
+// later on, we forgot that this author was deleted
+author.setGenre("Anthology");
+}
+```
+
+The highlighted code will cause an exception of type:
+
+```
+org.springframework.orm.ObjectOptimisticLockingFailureException: Object of class [com.bookstore.entity.Author] with identifier [4]: Optimistic Locking failed; nested exception is org.hibernate.StaleObjectStateException: Row was updated or deleted by another transaction (or unsaved-value mapping was incorrect) : [com.bookstore.entity.Author#4]
+```
+
+Practically, the modification (the call of setGenre()) changes the Author entity contained in the Persistence Context, but this context is outdated since the author was deleted from the database.
+
+In other words, after deleting the author and the associated books from the database, they will continue to exist in the current Persistence Context.
+
+The Persistence Context is not aware of the deletions performed via deleteInBatch(Iterable entities). To make sure that the Persistence Context is cleared after the deletions, you can override the deleteInBatch(Iterable entities) to add @Modifying(clearAutomatically = true).
+
+This way, the Persistence Context is automatically cleared after the deletions. If you are in a use case that requires a prior flush as well, then use @Modifying(flushAutomatically = true, clearAutomatically = true) or call the flush() method.
+
+Or, even better, you can reuse the deleteViaIdentifiers() method, as shown here (we’ve already annotated this method with @Modifying(flushAutomatically = true, clearAutomatically = true)):
+
+```
+@Transactional
+public void deleteViaIdentifiers() {
+Author author = authorRepository.findByNameWithBooks("Joana Nimar");
+bookRepository.deleteByAuthorIdentifier(author.getId());
+authorRepository.deleteByIdentifier(author.getId());
+}
+```
+
+Calling deleteViaIdentifiers() triggers the following queries:
+
+```
+DELETE FROM book
+WHERE author_id = ?
+DELETE FROM author
+WHERE id = ?
+```
+
+The number of books doesn’t affect the number of DELETE statements.
+
+If the Persistence Context manages several Authors and the associated Books that should be deleted then rely on the deleteViaBulkIn().
+
+### Deleting When the Author and Books that Should Be Deleted Are Not Loaded in the Persistence Context
+
+If the author that should be deleted and his associated books are not loaded in the Persistence Context then you can hardcode the author identifier (if you know it), as in the following service-method:
+
+```
+@Transactional
+public void deleteViaHardCodedIdentifiers() {
+bookRepository.deleteByAuthorIdentifier(4L);
+authorRepository.deleteByIdentifier(4L);
+}
+```
+
+The deleteByAuthorIdentifier() and deleteByIdentifier() methods are the same from “One Author Have Been Already Loaded in the Persistence Context” section. The triggered queries are quite obvious:
+
+```
+DELETE FROM book
+WHERE author_id = ?
+DELETE FROM author
+WHERE id = ?
+```
+
+If there are more authors, you can use bulk operations to delete them:
+
+```
+// add this method in BookRepository
+@Transactional
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("DELETE FROM Book b WHERE b.author.id IN ?1")
+public int deleteBulkByAuthorIdentifier(List<Long> id);// add this method in AuthorRepository
+
+@Transactional
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+@Query("DELETE FROM Author a WHERE a.id IN ?1")
+public int deleteBulkByIdentifier(List<long> id);
+```
+
+Now, let’s delete two authors and their associated books:
+
+```
+@Transactional
+public void deleteViaBulkHardCodedIdentifiers() {
+Listlong authorsIds = Arrays.asList(1L, 4L);
+bookRepository.deleteBulkByAuthorIdentifier(authorsIds);
+authorRepository.deleteBulkByIdentifier(authorsIds);
+}
+```
+
+The triggered SQL statements are as follows:
+
+```
+DELETE FROM book
+WHERE author_id IN (?, ?)
+DELETE FROM author
+WHERE id IN (?, ?)
+```
+
+The number of authors and books doesn’t affect the number of DELETE statements. Since we don’t load anything in the Persistence Context, flushAutomatically = true, clearAutomatically = true has no effect.
+
+In order to avoid outdated entities in the Persistence Context, do not forget to flush the EntityManager before the query is executed (flushAutomatically = true) and clear it after the query is executed (clearAutomatically = true).
+
+If you don’t want/need to flush and/or clear then pay attention to how you manage to avoid outdated entities in Persistence Context.
+
+As long as you know what you are doing, it’s not problematic to not flush and/or clear the Persistence Context. Ideally isolate bulk operations in dedicated transactional service-methods. This way, there is no need to explicitly flush and clear the Persistence Context. Issues may arise when you interleave bulk operations with managed entity operations.
+
+The most efficient way to delete all entities is via the built-in deleteAllInBatch(), which trigger a bulk operation.

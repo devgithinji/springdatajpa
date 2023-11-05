@@ -6,8 +6,6 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Getter
@@ -21,14 +19,14 @@ public class Book implements Serializable {
     private Long id;
     private String title;
     private String isbn;
-    @ManyToMany(mappedBy = "books")
-    @OrderBy("name DESC")
-    private Set<Author> authors = new HashSet<>();
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id")
+    private Author author;
 
 
     @Override
     public boolean equals(Object obj) {
-        if(obj == null) {
+        if (obj == null) {
             return false;
         }
         if (this == obj) {
