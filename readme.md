@@ -1885,7 +1885,6 @@ private Listbook books = new ArrayList<>();
 
 And the relevant part from Book is listed here:
 
-
 ```
 @Entity
 public class Book implements Serializable {
@@ -1995,6 +1994,7 @@ Conforming to JPA specifications, entity graphs can override the current FetchTy
 
 That being said, let’s assume that the Author and Book entities are involved in a bidirectional lazy @OneToMany association. Moreover, in the Author entity, let’s define an entity graph to load the names of the authors and the associated books. There is no need to load the ages and genres of authors, so the age and genre basic fields are not specified in the entity graph:
 
+```
 @Entity
 @NamedEntityGraph(
 name = "author-books-graph",
@@ -2013,25 +2013,29 @@ private String genre;
 private int age;
 @OneToMany(cascade = CascadeType.ALL,
 mappedBy = "author", orphanRemoval = true)
-private List<Book> books = new ArrayList<>();
+private Listbook books = new ArrayList<>();
 // getters and setters omitted for brevity
 }
+```
 
 Let’s use this entity graph in AuthorRepository. To have both in the same repository, you can use two methods via the Query Builder mechanism. It produces almost identical SQL statements named findByAgeGreaterThanAndGenre() and findByGenreAndAgeGreaterThan():
 
+```
 @Repository
 @Transactional(readOnly = true)
-public interface AuthorRepository extends JpaRepository<Author, Long> {
+public interface AuthorRepository extends JpaRepositoryauthor, {
 @EntityGraph(value = "author-books-graph",
 type = EntityGraph.EntityGraphType.FETCH)
-public List<Author> findByAgeGreaterThanAndGenre(int age, String genre);
+public Listauthor findByAgeGreaterThanAndGenre(int age, String genre);
 @EntityGraph(value = "author-books-graph",
 type = EntityGraph.EntityGraphType.LOAD)
-public List<Author> findByGenreAndAgeGreaterThan(String genre, int age);
+public Listauthor findByGenreAndAgeGreaterThan(String genre, int age);
 }
+```
 
 Calling the findByAgeGreaterThanAndGenre() triggers the following SQL SELECT statement (this is the fetch graph):
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 books1_.id AS id1_1_1_,
@@ -2048,10 +2052,11 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 WHERE author0_.age > ?
 AND author0_.genre = ?
-
+```
 
 Notice that, even if age and genre are not part of the fetch graph, they have been fetched in the query. Let’s try the load graph via findByGenreAndAgeGreaterThan():
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 books1_.id AS id1_1_1_,
@@ -2068,16 +2073,18 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 WHERE author0_.genre = ?
 AND author0_.age > ?
-
+```
 
 This time the presence of age and genre is normal. But these attributes (age and genre) are also loaded in the case of the fetch graph even if they are not explicitly specified via @ NamedAttributeNode.
 
 By default, attributes are annotated with @Basic, which relies on the default fetch policy. The default fetch policy is FetchType.EAGER. Based on this statement, a compromise solution consists of annotating the basic attributes that should not be fetched in the fetch graph with @Basic(fetch = FetchType.LAZY) as here:
 
+```
 @Basic(fetch = FetchType.LAZY)
 private String genre;
 @Basic(fetch = FetchType.LAZY)
 private int age;
+```
 
 But executing the fetch and load graph again reveals the exactly same queries. This means that the JPA specifications don’t apply to Hibernate with the basic (@Basic) attributes. Both the fetch graph and the load graph will ignore these settings as long as Bytecode Enhancement is not enabled. In Maven, add the following plug-in:
 
@@ -2085,7 +2092,7 @@ But executing the fetch and load graph again reveals the exactly same queries. T
 
 Finally, executing the fetch graph will reveal the expected SELECT:
 
-
+```
 SELECT
 author0_.id AS id1_0_0_,
 books1_.id AS id1_1_1_,
@@ -2100,9 +2107,11 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 WHERE author0_.age > ?
 AND author0_.genre = ?
+```
 
 Executing the load graph will reveal the expected SELECT as well:
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 books1_.id AS id1_1_1_,
@@ -2117,3 +2126,104 @@ LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 WHERE author0_.genre = ?
 AND author0_.age > ?
+```
+
+## How to Filter Associations via a Hibernate-Specific @Where Annotation
+
+The @Where annotation is simple to use and can be useful for filtering the fetched association by appending a WHERE clause to the query.
+
+Let’s use the Author and Book entities involved in a bidirectional lazy @OneToMany association. The goal is to lazy fetch the following:
+
+. All books
+• All books cheaper than $20
+• All books more expensive than $20
+
+To filter the cheaper/more expensive books, the Author entity relies on @Where as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+@Where(clause = "price <= 20")
+private Listbook cheapBooks = new ArrayList<>();
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+@Where(clause = "price > 20")
+private Listbook restOfBooks = new ArrayList<>();
+...
+}
+```
+
+Further, let’s write three service-methods that will trigger the three queries:
+
+```
+@Transactional(readOnly = true)
+public void fetchAuthorWithAllBooks() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Listbook books = author.getBooks();
+System.out.println(books);
+}@Transactional(readOnly = true)
+public void fetchAuthorWithCheapBooks() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Listbook books = author.getCheapBooks();
+System.out.println(books);
+}
+@Transactional(readOnly = true)
+public void fetchAuthorWithRestOfBooks() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Listbook books = author.getRestOfBooks();
+System.out.println(books);
+}
+```
+
+Calling fetchAuthorWithCheapBooks() triggers the following SQL statement, which fetches the books cheaper than \$20:
+
+```
+SELECT
+cheapbooks0_.author_id AS author_i5_1_0_,
+cheapbooks0_.id AS id1_1_0_,
+cheapbooks0_.id AS id1_1_1_,
+cheapbooks0_.author_id AS author_i5_1_1_,
+cheapbooks0_.isbn AS isbn2_1_1_,
+cheapbooks0_.price AS price3_1_1_,
+cheapbooks0_.title AS title4_1_1_
+FROM book cheapbooks0_
+WHERE (cheapbooks0_.price <= 20)
+AND cheapbooks0_.author_id = ?
+```
+
+Hibernate has appended the WHERE clause to instruct the database to filter the books by price <= 20.
+
+Calling fetchAuthorWithRestOfBooks() will append the WHERE clause to filter the books by price > 20:
+
+```
+SELECT
+restofbook0_.author_id AS author_i5_1_0_,
+restofbook0_.id AS id1_1_0_,
+restofbook0_.id AS id1_1_1_,
+restofbook0_.author_id AS author_i5_1_1_,
+restofbook0_.isbn AS isbn2_1_1_,
+restofbook0_.price AS price3_1_1_,
+restofbook0_.title AS title4_1_1_
+FROM book restofbook0_
+WHERE (restofbook0_.price > 20)
+AND restofbook0_.author_id = ?
+```
+
+Notice that these queries fetch the books in a lazy fashion. In other words, these are additional SELECT queries triggered after fetching the author in a separate SELECT. This is okay as long as you don’t want to fetch the author and the associated books in the same SELECT. In such cases, switching from LAZY to EAGER should be avoided. Therefore, relying on JOIN FETCH WHERE is much better at least from two aspects:
+
+* It fetches the associated books in the same SELECT with author
+* It allows us to pass the given price as a query binding parameter
+
+Nevertheless, @Where can be useful in several situations. For example, it can be used in a soft deletes implementation

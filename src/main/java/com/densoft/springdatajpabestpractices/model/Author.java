@@ -3,6 +3,7 @@ package com.densoft.springdatajpabestpractices.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.Where;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -36,6 +37,16 @@ public class Author implements Serializable {
     @OneToMany(cascade = CascadeType.ALL,
             mappedBy = "author", orphanRemoval = true)
     private List<Book> books = new ArrayList<>();
+
+    @OneToMany(cascade = CascadeType.ALL,
+            mappedBy = "author", orphanRemoval = true)
+    @Where(clause = "price <= 20")
+    private List<Book> cheapBooks = new ArrayList<>();
+
+    @OneToMany(cascade = CascadeType.ALL,
+            mappedBy = "author", orphanRemoval = true)
+    @Where(clause = "price > 20")
+    private List<Book> restOfBooks = new ArrayList<>();
 
 
     public void addBook(Book book) {

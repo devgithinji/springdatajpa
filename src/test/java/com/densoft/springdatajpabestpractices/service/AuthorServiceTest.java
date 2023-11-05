@@ -16,12 +16,17 @@ class AuthorServiceTest {
     }
 
     @Test
-    void findByAgeGreaterThanAndGenre() {
-        authorService.findByAgeGreaterThanAndGenre();
+    void fetchAuthorWithAllBooks() {
+        authorService.fetchAuthorWithAllBooks();
     }
 
     @Test
-    void findByGenreAndAgeGreaterThan() {
-        authorService.findByGenreAndAgeGreaterThan();
+    void fetchAuthorWithCheapBooks() {
+        authorService.fetchAuthorWithCheapBooks();
+    }
+
+    @Test
+    void fetchAuthorWithRestOfBooks() {
+        authorService.fetchAuthorWithRestOfBooks();
     }
 }
