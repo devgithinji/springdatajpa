@@ -1567,7 +1567,6 @@ public Listauthor findByAgeLessThanOrderByNameDesc(int age);
 }
 ```
 
-
 The generated SQL SELECT statement is shown here:
 
 ```
@@ -1609,16 +1608,231 @@ public Listauthor findAll(Specification spec);
 }
 ```
 
-
 ```
 List authors = authorRepository.findAll(isAgeGt45());
 ```
 
 The generated SQL SELECT statement is as follows:
 
+```
 SELECT
 ...
 FROM author author0_
 LEFT OUTER JOIN book books1_
 ON author0_.id = books1_.author_id
 WHERE author0_.age > 45
+```
+
+### Using @Query and JPQL
+
+Pay attention to queries that are used with entity graphs that specify join fetching. In such cases, it’s mandatory to have the owner of the fetched association present in the SELECT list.
+
+@EntityGraph(value = "author-books-graph",
+type = EntityGraph.EntityGraphType.FETCH)
+@Query(value="SELECT a FROM Author a WHERE a.age > 20 AND a.age < 40")
+public Listauthor fetchAllAgeBetween20And40();
+The SQL SELECT statement is as follows:
+
+```
+SELECT
+...
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+WHERE author0_.age > 20 AND author0_.age < 40
+```
+
+### consider
+
+**MultipleBagFetchException:**
+
+* This exception occurs when you attempt multiple eager fetches in Hibernate, and it can happen both with entity graphs and when manually constructing queries.
+* The multiple eager fetches might result in loading a large number of records due to the Cartesian product, which can be a performance bottleneck.
+
+@EntityGraph(graphType = EntityGraphType.FETCH, attributePaths = { "authors", "chapters.sections.pages" })
+@Query("SELECT b FROM Book b")
+List<Book> findAllWithEagerLoading();
+
+also
+
+```
+@Entity
+public class Order {
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;@OneToMany(mappedBy = "order", fetch = FetchType.EAGER)
+private Setproduct products;
+
+// Other Order fields and methods
+}@Entity
+public class Product {
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;@ManyToOne
+@JoinColumn(name = "order_id")
+private Order order;
+
+// Other Product fields and methods
+}
+```
+
+Here, if you retrieve orders with their products using eager fetching (by default, Hibernate uses Sets for one-to-many associations), you might encounter a MultipleBagFetchException.
+
+**Solutions**
+
+**Fetch Associations One at a Time:**
+
+To avoid the MultipleBagFetchException and improve performance, you can fetch associations one at a time. Here's an example of how you can achieve this using separate queries:
+
+```
+@Repository
+public class BookRepository {@PersistenceContext
+private EntityManager entityManager;
+
+public Listbook findAllBooks() {
+    TypedQuerybook query = entityManager.createQuery("SELECT b FROM Book b", Book.class);
+    return query.getResultList();
+}
+
+public Listauthor findAuthorsForBook(Book book) {
+    // Fetch authors for a specific book
+    return book.getAuthors();
+}
+
+public Listchapter findChaptersForBook(Book book) {
+    // Fetch chapters for a specific book
+    return book.getChapters();
+}
+
+// Define similar methods for fetching sections and pages.
+}
+```
+
+In this solution, you fetch the list of books separately and then fetch authors, chapters, sections, and pages for each book as needed. This avoids eager loading of all associations at once and minimizes the Cartesian product.
+
+Switching from Set to List:
+
+To address the MultipleBagFetchException, you can switch from using `Set` to `List` for your associations. Modify the `Order` entity like this:
+
+```
+@Entity
+public class Order {
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;@OneToMany(mappedBy = "order", fetch = FetchType.EAGER)
+private Listproduct products;
+
+// Other Order fields and methods
+}
+```
+
+While this change avoids the MultipleBagFetchException, it can still be inefficient in terms of performance because it may lead to a large number of rows in the result set (cartesian product).
+
+**Fetching One Association at a Time:**
+
+Rather than eagerly fetching both Books and Chapters simultaneously, you can fetch one association at a time to avoid the Cartesian product issue.
+
+```
+//fetch books
+EntityGraphauthor graph = entityManager.createEntityGraph(Author.class);
+graph.addSubgraph("books");
+Author author = entityManager.find(Author.class, authorId, Collections.singletonMap("javax.persistence.fetchgraph", graph));
+// Fetch Chapters separately
+EntityGraphauthor chapterGraph = entityManager.createEntityGraph(Author.class);
+chapterGraph.addSubgraph("chapters");
+author = entityManager.find(Author.class, authorId, Collections.singletonMap("javax.persistence.fetchgraph", chapterGraph));
+```
+
+**Native Queries with Entity Graphs:**
+
+you cannot use entity graphs with native SQL queries in Hibernate. Entity graphs are a feature of JPA (Java Persistence API) and are not applicable to native SQL queries.
+
+**Pagination and In-Memory Processing:**
+
+When using entity graphs that translate into SQL JOINs for fetching associated collections, pagination may not work as expected.
+
+In such cases, pagination could occur in-memory, leading to potential performance issues.
+
+### Ad Hoc Entity Graphs
+
+An ad hoc entity graph can be defined via the attributePaths element of the @EntityGraph annotation. The entity’s related associations and basic fields that should be loaded in a single SELECT are specified as a list separated by comma of type,
+
+```
+@EntityGraph(attributePaths = {"attr1", "attr2", ...}.
+```
+
+Obviously, this time, there is no need to use @NamedEntityGraph.
+
+For example, the entity graph from the previous section can be written as follows:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+@Override
+@EntityGraph(attributePaths = {"books"},
+type = EntityGraph.EntityGraphType.FETCH)
+public Listauthor findAll();
+}
+```
+
+Calling findAll() triggers the same SQL SELECT statement as @NamedEntityGraph:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+books1_.id AS id1_1_1_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_,
+books1_.author_id AS author_i4_1_1_,
+books1_.isbn AS isbn2_1_1_,
+books1_.title AS title3_1_1_,
+books1_.author_id AS author_i4_1_0__,
+books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ON author0_.id = books1_.author_id
+```
+
+
+Ad hoc entity graphs are a convenient way to keep the entity graph definition at the repository-level and not alter the entities with @NamedEntityGraph.
+
+
+### Defining an Entity Graph via EntityManager
+
+To get an entity graph directly via EntityManager, you call the getEntityGraph(String entityGraphName) method. Next, pass the return of this method to the overloaded find() method, as in the following snippet of code:
+
+```
+EntityGraph entityGraph = entityManager
+.getEntityGraph("author-books-graph");
+Mapstring, properties = new HashMap<>();
+properties.put("javax.persistence.fetchgraph", entityGraph);
+Author author = entityManager.find(Author.class, id, properties);
+```
+
+JPQL and EntityManager can be used as well:
+
+```
+EntityGraph entityGraph = entityManager
+.getEntityGraph("author-books-graph");
+Author author = entityManager.createQuery(
+"SELECT a FROM Author a WHERE a.id = :id", Author.class)
+.setParameter("id", id)
+.setHint("javax.persistence.fetchgraph", entityGraph)
+.getSingleResult();
+Or via CriteriaBuilder and EntityManager:
+EntityGraph entityGraph = entityManager
+.getEntityGraph("author-books-graph");
+CriteriaBuilder criteriaBuilder = entityManager.getCriteriaBuilder();
+CriteriaQueryauthor criteriaQuery
+= criteriaBuilder.createQuery(Author.class);
+Rootauthor author = criteriaQuery.from(Author.class);
+criteriaQuery.where(criteriaBuilder.equal(root.longget("id"), id));
+TypedQueryauthor typedQuery = entityManager.createQuery(criteriaQuery);
+typedQuery.setHint("javax.persistence.loadgraph", entityGraph);
+Author author = typedQuery.getSingleResult();
+```
+
+
+You can create an entity graph via the EntityManager#createEntityGraph() method.

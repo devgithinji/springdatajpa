@@ -124,4 +124,9 @@ public class AuthorService {
     public void findAllAuthorsWhereAgeIsGreaterThan45Specification() {
         authorRepo.findAll(AuthorSpecs.isAgeGt45());
     }
+
+    @Transactional
+    public void fetchAllAgeBetween20And40() {
+        authorRepo.fetchAllAgeBetween20And40();
+    }
 }

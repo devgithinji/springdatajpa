@@ -59,4 +59,9 @@ class AuthorServiceTest {
     void findAllAuthorsWhereAgeIsGreaterThan45Specification() {
         authorService.findAllAuthorsWhereAgeIsGreaterThan45Specification();
     }
+
+    @Test
+    void fetchAllAgeBetween20And40() {
+        authorService.fetchAllAgeBetween20And40();
+    }
 }
