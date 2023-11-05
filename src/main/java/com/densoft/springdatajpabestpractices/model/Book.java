@@ -19,9 +19,13 @@ public class Book implements Serializable {
     private Long id;
     private String title;
     private String isbn;
+    private int price;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id")
     private Author author;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "publisher_id")
+    private Publisher publisher;
 
 
     @Override
@@ -49,6 +53,7 @@ public class Book implements Serializable {
                 "id=" + id +
                 ", title='" + title + '\'' +
                 ", isbn='" + isbn + '\'' +
+                ", price=" + price +
                 '}';
     }
 }
