@@ -19,4 +19,9 @@ class AuthorServiceTest {
     void deleteViaCascadeRemove() {
         authorService.deleteViaCascadeRemove();
     }
+
+    @Test
+    void deleteViaIdentifiers() {
+        authorService.deleteViaIdentifiers();
+    }
 }
