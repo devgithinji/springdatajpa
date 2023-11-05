@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -95,5 +96,16 @@ public class AuthorService {
 
     }
 
+    @Transactional
+    public void deleteViaHardCodedIdentifiers() {
+        bookRepo.deleteByAuthorIdentifier(1L);
+        authorRepo.deleteByIdentifier(1L);
+    }
 
+    @Transactional
+    public void deleteViaBulkHardCodedIdentifiers() {
+        List<Long> authorsIds = Arrays.asList(1L, 2L);
+        bookRepo.deleteBulkByAuthorIdentifier(authorsIds);
+        authorRepo.deleteBulkByIdentifier(authorsIds);
+    }
 }

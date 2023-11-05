@@ -34,4 +34,14 @@ class AuthorServiceTest {
     void deleteViaDeleteInBatch() {
         authorService.deleteViaDeleteInBatch();
     }
+
+    @Test
+    void deleteViaHardCodedIdentifiers() {
+        authorService.deleteViaHardCodedIdentifiers();
+    }
+
+    @Test
+    void deleteViaBulkHardCodedIdentifiers() {
+        authorService.deleteViaBulkHardCodedIdentifiers();
+    }
 }
