@@ -16,14 +16,12 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
 
     List<Author> findByAge(int age);
 
-    @Override
-    @EntityGraph(value = "author-books-graph", type = EntityGraph.EntityGraphType.FETCH)
-    List<Author> findAll();
 
     @Override
-    @EntityGraph(value = "author-books-graph",
+    @EntityGraph(attributePaths = {"books"},
             type = EntityGraph.EntityGraphType.FETCH)
-    List<Author> findAll(Specification spec);
+    List<Author> findAll();
+
 
     @EntityGraph(value = "author-books-graph",
             type = EntityGraph.EntityGraphType.FETCH)
