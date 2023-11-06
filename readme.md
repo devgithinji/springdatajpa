@@ -2592,3 +2592,5 @@ a book, a magazine or an article';
 END IF;
 END;
 ```
+
+## Entities
