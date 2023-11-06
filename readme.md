@@ -2480,3 +2480,115 @@ There are a bunch of advantages of using @MapsId, as follows:
 * If Book is present in the Second Level Cache it will be fetched accordingly (no extra database round trip is needed). This is the main drawback of a regular unidirectional @OneToOne.
 * Fetching the Author doesn’t automatically trigger an unnecessary additional query for fetching the Book as well. This is the main drawback of a regular bidirectional @OneToOne.
 * Sharing the primary key reduces memory footprint (no need to index both the primary key and the foreign key)
+
+## How to Validate that Only One Association Is Non-Null
+
+Consider the Review entity. It defines three @ManyToOne relationships to Book, Article, and Magazine:
+
+```
+@Entity
+public class Review implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String content;
+@ManyToOne(fetch = FetchType.LAZY)
+private Book book;
+@ManyToOne(fetch = FetchType.LAZY)
+private Article article;
+@ManyToOne(fetch = FetchType.LAZY)
+private Magazine magazine;
+// getters and setters omitted for brevity
+}
+```
+
+In this context, a review can be associated with a book, a magazine, or an article. Implementing this constraint at application-level can be achieved via Bean Validation
+
+Start by defining an annotation that will be added at class-level to the Review entity
+
+```
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = {JustOneOfManyValidator.class})
+public @interface JustOneOfMany {
+String message() default "A review can be associated with either
+a book, a magazine or an article";
+Class?[] groups() default {};
+Class? extends Payload[] payload() default {};
+}
+```
+
+
+Following the Bean Validation documentation, the @JustOneOfMany annotation is empowered by the following validation:
+
+```
+public class JustOneOfManyValidator
+implements ConstraintValidatorjustoneofmany, {
+@Override
+public boolean isValid(Review review, ConstraintValidatorContext ctx) {
+return Stream.of(
+review.getBook(), review.getArticle(), review.getMagazine())
+.filter(Objects::nonNull)
+.count() == 1;
+}
+}
+```
+
+
+Finally, just add the @JustOneOfMany annotation at the class-level to the Review entity:
+
+```
+@Entity
+@JustOneOfMany
+public class Review implements Serializable {
+...
+}
+```
+
+### Testing Time
+
+The database already contains a Book, an Article, and a Magazine. The following service-method will successfully save a Review of a Book:
+
+```
+@Transactional
+public void persistReviewOk() {
+Review review = new Review();
+review.setContent("This is a book review ...");
+review.setBook(bookRepository.findById(1L).get());
+reviewRepository.save(review);
+
+```
+
+}
+
+On the other hand, the following service-method will not succeed to persist a Review. It will fail the validation specified via @JustOneOfMany since the code tries to set this review to an Article and to a Magazine:
+
+```
+@Transactional
+public void persistReviewWrong() {
+Review review = new Review();
+review.setContent("This is an article and magazine review ...");
+review.setArticle(articleRepository.findById(1L).get());
+// this will fail validation
+review.setMagazine(magazineRepository.findById(1L).get());
+reviewRepository.save(review);
+}
+```
+
+Nevertheless, note that native queries can bypass this application-level validation. If you know that such a scenario is possible, you have to add this validation at the databaselevel as well. In MySQL, this can be done via a TRIGGER, as follows:
+
+```
+CREATE TRIGGER Just_One_Of_Many
+BEFORE INSERT ON review
+FOR EACH ROW
+BEGIN
+IF (NEW.article_id IS NOT NULL AND NEW.magazine_id IS NOT NULL)
+OR (NEW.article_id IS NOT NULL AND NEW.book_id IS NOT NULL)
+OR (NEW.book_id IS NOT NULL AND NEW.magazine_id IS NOT NULL) THEN
+SIGNAL SQLSTATE '45000'
+SET MESSAGE_TEXT='A review can be associated with either
+a book, a magazine or an article';
+END IF;
+END;
+```

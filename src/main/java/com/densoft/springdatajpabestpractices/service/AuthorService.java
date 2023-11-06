@@ -34,13 +34,13 @@ public class AuthorService {
     @Transactional
     public void newBookOfAuthor() {
 
-        Author author = authorRepo.findById(1L).orElseThrow();
-        Book book = new Book();
-        book.setTitle("A History of Ancient Prague");
-        book.setIsbn("001-JN");
-        // this will set the id of the book as the id of the author
-        book.setAuthor(author);
-        bookRepo.save(book);
+//        Author author = authorRepo.findById(1L).orElseThrow();
+//        Book book = new Book();
+//        book.setTitle("A History of Ancient Prague");
+//        book.setIsbn("001-JN");
+//        // this will set the id of the book as the id of the author
+//        book.setAuthor(author);
+//        bookRepo.save(book);
     }
 
     @Transactional(readOnly = true)
