@@ -2227,3 +2227,368 @@ Notice that these queries fetch the books in a lazy fashion. In other words, the
 * It allows us to pass the given price as a query binding parameter
 
 Nevertheless, @Where can be useful in several situations. For example, it can be used in a soft deletes implementation
+
+## How to Optimize Unidirectional/ Bidirectional @OneToOne via @MapsId
+
+Let’s use the Author and Book entities involved in a @OneToOne association.
+
+![image.png](assets/imageyyyyy.png)
+
+In relational databases (RDBMS), the one-to-one association involves a parent-side and a child-side that are “linked” via a unique foreign key. In JPA, this association is mapped via the @OneToOne annotation, and the association can be either unidirectional or bidirectional.
+
+In this context, why is @MapsId so important in unidirectional and bidirectional @OneToOne associations? Well, let’s use a regular mapping and highlight the drawbacks from a performance perspective. Therefore, we focus on the unidirectional @OneToOne association.
+
+### Regular Unidirectional @OneToOne
+
+The Author is the parent-side and the Book is the child-side of the one-to-one association. The Author entity is listed here:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+// getters and setters omitted for brevity
+}
+```
+
+The @OneToOne annotation is added on the child-side as follows:
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+@OneToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+// getters and setters omitted for brevity
+}
+```
+
+The @JoinColumn annotation is used to customize the name of the foreign key column.
+
+The unidirectional @OneToOne controls the associated foreign key. In other words, the owning side of the relationship controls the foreign key. You call setAuthor() from a service-method as follows
+
+```
+@Transactional
+public void newBookOfAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = new Book();
+book.setTitle("A History of Ancient Prague");
+book.setIsbn("001-JN");
+book.setAuthor(author);
+bookRepository.save(book);
+}
+```
+
+Calling newBookOfAuthor() will produce the following INSERT statement in the book table:
+
+```
+INSERT INTO book (author_id, isbn, title)
+VALUES (?, ?, ?)
+Binding:[1, 001-JN, A History of Ancient Prague]
+```
+
+So, the JPA persistence provider (Hibernate) has populated the foreign key column (author\_id) value with the author identifier.
+
+Everything looks fine so far! However, when the parent-side of such an association needs to fetch the associated child, it needs to trigger a JPQL query because the child entity identifier is unknown. Check out the following JPQL query
+
+```
+@Repository
+public interface BookRepository extends JpaRepositorybook, {
+@Query("SELECT b FROM Book b WHERE b.author = ?1")
+public Book fetchBookByAuthor(Author author);
+}
+```
+
+And, the service-method is as follows:
+
+```
+@Transactional(readOnly = true)
+public Book fetchBookByAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+return bookRepository.fetchBookByAuthor(author);
+}
+```
+
+Calling fetchBookByAuthor() will produce the following SQL statement:
+
+```
+SELECT
+book0_.id AS id1_1_,
+book0_.author_id AS author_i4_1_,
+book0_.isbn AS isbn2_1_,
+book0_.title AS title3_1_
+FROM book book0_
+WHERE book0_.author_id = ?
+Binding:[1] Extracted:[1, 1, 001-JN, A History of Ancient Prague]
+```
+
+If the parent-side constantly/always needs the child-side as well, then triggering a new query can be a performance penalty'
+
+The performance penalty highlighted gets worse if the application uses the Second Level Cache for storing Authors and Books. While the Authors and Books are stored in the Second Level Cache, fetching the associated child will still require a database round trip via the JPQL query listed here. Assuming that the parent knows the identifier of the child, it can take advantage of the Second Level Cache as follows
+
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = bookRepository.findById(author.getId()).orElseThrow();
+
+But, since the child identifier is unknown, this code cannot be used. Other (not better) workarounds are to rely on query cache or @NaturalId.
+
+### Regular Bidirectional @OneToOne
+
+Let’s use the Author and Book entities involved in a bidirectional @OneToOne association. In other words, the parent-side relies on mappedBy as follows (the childside remains the same):
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToOne(mappedBy = "author", cascade = CascadeType.ALL,
+fetch = FetchType.LAZY)
+private Book book;
+// getters and setters omitted for brevity
+}
+```
+
+The main drawback of the bidirectional @OneToOne can be observed by fetching the parent (Author) as follows:
+
+```
+Author author = authorRepository.findById(1L).orElseThrow();
+```
+
+Even if this is a LAZY association, fetching the Author will trigger the following SELECT statements:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?SELECT
+book0_.id AS id1_1_0_,
+book0_.author_id AS author_i4_1_0_,
+book0_.isbn AS isbn2_1_0_,
+book0_.title AS title3_1_0_
+FROM book book0_
+WHERE book0_.author_id = ?
+```
+
+Next to the parent entity, Hibernate fetched the child entity as well. Obviously, if the application needs only the parent then fetching the child is just a waste of resources, which is a performance penalty.
+
+The secondary query is caused by a parent-side dilemma. Without fetching the child entity, the JPA persistent provider (Hibernate) cannot know if it should assign the child reference to null or to an Object (concrete object or proxy object). Adding non-nullability awareness via the optional=false element to @OneToOne doesn’t help in this case.
+
+A workaround consists of relying on Bytecode Enhancement and @LazyToOne(LazyToOneOption.NO\_PROXY) on the parent-side. Or, even better, rely on unidirectional @OneToOne and @MapsId.
+
+### @MapsId to the Rescue of @OneToOne
+
+The @MapsId is a JPA 2.0 annotation that can be applied to @ManyToOne and unidirectional (or bidirectional) @OneToOne associations. Via this annotation, the book table’s primary key can also be a foreign key referencing the author’s table primary key.
+
+The author and book tables share primary keys
+
+![image.png](assets/imageasfd.png)
+
+You add @MapsId to the child entity, as shown here:
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+private String title;
+private String isbn;
+@MapsId
+@OneToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+// getters and setters omitted for brevity
+}
+```
+
+Check out the identifier of the Book entity. There is no need for it to be generated (@GeneratedValue is not present) since this identifier is exactly the identifier of the author association. The Book identifier is set by Hibernate on your behalf.
+
+The @JoinColumn annotation is used to customize the name of the primary key column
+
+The parent entity is quite simple because there is no need to have a bidirectional @OneToOne (if this is what you initially had). The Author is as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+// getters and setters omitted for brevity
+}
+```
+
+Now, you can persist a Book via a service-method as follows
+
+```
+@Transactional
+public void newBookOfAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = new Book();
+book.setTitle("A History of Ancient Prague");
+book.setIsbn("001-JN");
+// this will set the id of the book as the id of the author
+book.setAuthor(author);
+bookRepository.save(book);
+}
+```
+
+Calling newBookOfAuthor() reveals the following INSERT statement (this is the effect of calling the save() method):
+
+```
+INSERT INTO book (isbn, title, author_id)
+VALUES (?, ?, ?)
+Binding:[001-JN, A History of Ancient Prague, 1]
+```
+
+Notice that author\_id was set to the author identifier. This means that the parent and the child tables share the same primary key.
+
+Further, the developer can fetch the Book via the Author identifier, as follows
+
+
+```
+@Transactional(readOnly = true)
+public Book fetchBookByAuthorId() {
+Author author = authorRepository.findById(1L).orElseThrow();
+return bookRepository.findById(author.getId()).orElseThrow();
+}
+```
+
+There are a bunch of advantages of using @MapsId, as follows:
+
+* If Book is present in the Second Level Cache it will be fetched accordingly (no extra database round trip is needed). This is the main drawback of a regular unidirectional @OneToOne.
+* Fetching the Author doesn’t automatically trigger an unnecessary additional query for fetching the Book as well. This is the main drawback of a regular bidirectional @OneToOne.
+* Sharing the primary key reduces memory footprint (no need to index both the primary key and the foreign key)
+
+## How to Validate that Only One Association Is Non-Null
+
+Consider the Review entity. It defines three @ManyToOne relationships to Book, Article, and Magazine:
+
+```
+@Entity
+public class Review implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String content;
+@ManyToOne(fetch = FetchType.LAZY)
+private Book book;
+@ManyToOne(fetch = FetchType.LAZY)
+private Article article;
+@ManyToOne(fetch = FetchType.LAZY)
+private Magazine magazine;
+// getters and setters omitted for brevity
+}
+```
+
+In this context, a review can be associated with a book, a magazine, or an article. Implementing this constraint at application-level can be achieved via Bean Validation
+
+Start by defining an annotation that will be added at class-level to the Review entity
+
+```
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Constraint(validatedBy = {JustOneOfManyValidator.class})
+public @interface JustOneOfMany {
+String message() default "A review can be associated with either
+a book, a magazine or an article";
+Class?[] groups() default {};
+Class? extends Payload[] payload() default {};
+}
+```
+
+
+Following the Bean Validation documentation, the @JustOneOfMany annotation is empowered by the following validation:
+
+```
+public class JustOneOfManyValidator
+implements ConstraintValidatorjustoneofmany, {
+@Override
+public boolean isValid(Review review, ConstraintValidatorContext ctx) {
+return Stream.of(
+review.getBook(), review.getArticle(), review.getMagazine())
+.filter(Objects::nonNull)
+.count() == 1;
+}
+}
+```
+
+
+Finally, just add the @JustOneOfMany annotation at the class-level to the Review entity:
+
+```
+@Entity
+@JustOneOfMany
+public class Review implements Serializable {
+...
+}
+```
+
+### Testing Time
+
+The database already contains a Book, an Article, and a Magazine. The following service-method will successfully save a Review of a Book:
+
+```
+@Transactional
+public void persistReviewOk() {
+Review review = new Review();
+review.setContent("This is a book review ...");
+review.setBook(bookRepository.findById(1L).get());
+reviewRepository.save(review);
+
+```
+
+}
+
+On the other hand, the following service-method will not succeed to persist a Review. It will fail the validation specified via @JustOneOfMany since the code tries to set this review to an Article and to a Magazine:
+
+```
+@Transactional
+public void persistReviewWrong() {
+Review review = new Review();
+review.setContent("This is an article and magazine review ...");
+review.setArticle(articleRepository.findById(1L).get());
+// this will fail validation
+review.setMagazine(magazineRepository.findById(1L).get());
+reviewRepository.save(review);
+}
+```
+
+Nevertheless, note that native queries can bypass this application-level validation. If you know that such a scenario is possible, you have to add this validation at the databaselevel as well. In MySQL, this can be done via a TRIGGER, as follows:
+
+```
+CREATE TRIGGER Just_One_Of_Many
+BEFORE INSERT ON review
+FOR EACH ROW
+BEGIN
+IF (NEW.article_id IS NOT NULL AND NEW.magazine_id IS NOT NULL)
+OR (NEW.article_id IS NOT NULL AND NEW.book_id IS NOT NULL)
+OR (NEW.book_id IS NOT NULL AND NEW.magazine_id IS NOT NULL) THEN
+SIGNAL SQLSTATE '45000'
+SET MESSAGE_TEXT='A review can be associated with either
+a book, a magazine or an article';
+END IF;
+END;
+```

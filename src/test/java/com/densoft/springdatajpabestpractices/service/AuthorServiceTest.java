@@ -11,22 +11,12 @@ class AuthorServiceTest {
     private AuthorService authorService;
 
     @Test
-    void insertAuthorWithBooks() {
-        authorService.insertAuthorWithBooks();
+    void fetchBookByAuthorId() {
+        authorService.fetchBookByAuthorId();
     }
 
     @Test
-    void fetchAuthorWithAllBooks() {
-        authorService.fetchAuthorWithAllBooks();
-    }
-
-    @Test
-    void fetchAuthorWithCheapBooks() {
-        authorService.fetchAuthorWithCheapBooks();
-    }
-
-    @Test
-    void fetchAuthorWithRestOfBooks() {
-        authorService.fetchAuthorWithRestOfBooks();
+    void newBookOfAuthor() {
+        authorService.newBookOfAuthor();
     }
 }
