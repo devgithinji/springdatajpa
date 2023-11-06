@@ -2227,3 +2227,168 @@ Notice that these queries fetch the books in a lazy fashion. In other words, the
 * It allows us to pass the given price as a query binding parameter
 
 Nevertheless, @Where can be useful in several situations. For example, it can be used in a soft deletes implementation
+
+## How to Optimize Unidirectional/ Bidirectional @OneToOne via @MapsId
+
+Let’s use the Author and Book entities involved in a @OneToOne association.
+
+![image.png](assets/imageyyyyy.png)
+
+In relational databases (RDBMS), the one-to-one association involves a parent-side and a child-side that are “linked” via a unique foreign key. In JPA, this association is mapped via the @OneToOne annotation, and the association can be either unidirectional or bidirectional.
+
+In this context, why is @MapsId so important in unidirectional and bidirectional @OneToOne associations? Well, let’s use a regular mapping and highlight the drawbacks from a performance perspective. Therefore, we focus on the unidirectional @OneToOne association.
+
+### Regular Unidirectional @OneToOne
+
+The Author is the parent-side and the Book is the child-side of the one-to-one association. The Author entity is listed here:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+// getters and setters omitted for brevity
+}
+```
+
+The @OneToOne annotation is added on the child-side as follows:
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+@OneToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+// getters and setters omitted for brevity
+}
+```
+
+The @JoinColumn annotation is used to customize the name of the foreign key column.
+
+The unidirectional @OneToOne controls the associated foreign key. In other words, the owning side of the relationship controls the foreign key. You call setAuthor() from a service-method as follows
+
+```
+@Transactional
+public void newBookOfAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = new Book();
+book.setTitle("A History of Ancient Prague");
+book.setIsbn("001-JN");
+book.setAuthor(author);
+bookRepository.save(book);
+}
+```
+
+Calling newBookOfAuthor() will produce the following INSERT statement in the book table:
+
+```
+INSERT INTO book (author_id, isbn, title)
+VALUES (?, ?, ?)
+Binding:[1, 001-JN, A History of Ancient Prague]
+```
+
+So, the JPA persistence provider (Hibernate) has populated the foreign key column (author\_id) value with the author identifier.
+
+Everything looks fine so far! However, when the parent-side of such an association needs to fetch the associated child, it needs to trigger a JPQL query because the child entity identifier is unknown. Check out the following JPQL query
+
+```
+@Repository
+public interface BookRepository extends JpaRepositorybook, {
+@Query("SELECT b FROM Book b WHERE b.author = ?1")
+public Book fetchBookByAuthor(Author author);
+}
+```
+
+And, the service-method is as follows:
+
+```
+@Transactional(readOnly = true)
+public Book fetchBookByAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+return bookRepository.fetchBookByAuthor(author);
+}
+```
+
+Calling fetchBookByAuthor() will produce the following SQL statement:
+
+```
+SELECT
+book0_.id AS id1_1_,
+book0_.author_id AS author_i4_1_,
+book0_.isbn AS isbn2_1_,
+book0_.title AS title3_1_
+FROM book book0_
+WHERE book0_.author_id = ?
+Binding:[1] Extracted:[1, 1, 001-JN, A History of Ancient Prague]
+```
+
+If the parent-side constantly/always needs the child-side as well, then triggering a new query can be a performance penalty'
+
+The performance penalty highlighted gets worse if the application uses the Second Level Cache for storing Authors and Books. While the Authors and Books are stored in the Second Level Cache, fetching the associated child will still require a database round trip via the JPQL query listed here. Assuming that the parent knows the identifier of the child, it can take advantage of the Second Level Cache as follows
+
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = bookRepository.findById(author.getId()).orElseThrow();
+
+But, since the child identifier is unknown, this code cannot be used. Other (not better) workarounds are to rely on query cache or @NaturalId.
+
+### Regular Bidirectional @OneToOne
+
+Let’s use the Author and Book entities involved in a bidirectional @OneToOne association. In other words, the parent-side relies on mappedBy as follows (the childside remains the same):
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToOne(mappedBy = "author", cascade = CascadeType.ALL,
+fetch = FetchType.LAZY)
+private Book book;
+// getters and setters omitted for brevity
+}
+```
+
+The main drawback of the bidirectional @OneToOne can be observed by fetching the parent (Author) as follows:
+
+```
+Author author = authorRepository.findById(1L).orElseThrow();
+```
+
+Even if this is a LAZY association, fetching the Author will trigger the following SELECT statements:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?SELECT
+book0_.id AS id1_1_0_,
+book0_.author_id AS author_i4_1_0_,
+book0_.isbn AS isbn2_1_0_,
+book0_.title AS title3_1_0_
+FROM book book0_
+WHERE book0_.author_id = ?
+```
+
+Next to the parent entity, Hibernate fetched the child entity as well. Obviously, if the application needs only the parent then fetching the child is just a waste of resources, which is a performance penalty.
+
+The secondary query is caused by a parent-side dilemma. Without fetching the child entity, the JPA persistent provider (Hibernate) cannot know if it should assign the child reference to null or to an Object (concrete object or proxy object). Adding non-nullability awareness via the optional=false element to @OneToOne doesn’t help in this case.
+
+A workaround consists of relying on Bytecode Enhancement and @LazyToOne(LazyToOneOption.NO\_PROXY) on the parent-side. Or, even better, rely on unidirectional @OneToOne and @MapsId.

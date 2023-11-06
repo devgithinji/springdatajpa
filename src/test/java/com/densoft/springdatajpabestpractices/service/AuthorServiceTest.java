@@ -15,18 +15,9 @@ class AuthorServiceTest {
         authorService.insertAuthorWithBooks();
     }
 
-    @Test
-    void fetchAuthorWithAllBooks() {
-        authorService.fetchAuthorWithAllBooks();
-    }
 
     @Test
-    void fetchAuthorWithCheapBooks() {
-        authorService.fetchAuthorWithCheapBooks();
-    }
-
-    @Test
-    void fetchAuthorWithRestOfBooks() {
-        authorService.fetchAuthorWithRestOfBooks();
+    void getAuthor() {
+        authorService.getAuthor();
     }
 }

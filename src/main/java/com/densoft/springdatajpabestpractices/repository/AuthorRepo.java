@@ -17,17 +17,6 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
     List<Author> findByAge(int age);
 
 
-    @EntityGraph(value = "author-books-graph",
-            type = EntityGraph.EntityGraphType.FETCH)
-    List<Author> findByAgeGreaterThanAndGenre(int age, String genre);
-    @EntityGraph(value = "author-books-graph",
-            type = EntityGraph.EntityGraphType.LOAD)
-    List<Author> findByGenreAndAgeGreaterThan(String genre, int age);
-
-    @Override
-    @Modifying(clearAutomatically = true)
-    void deleteAllInBatch(Iterable<Author> entities);
-
     @Query("SELECT a FROM Author a LEFT JOIN Book b ON a.id = b.author.id WHERE a.name = :name")
     Author findByNameWithBooks(@Param("name") String name);
 
