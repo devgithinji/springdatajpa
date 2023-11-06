@@ -27,9 +27,6 @@ public class Author implements Serializable {
     @Basic(fetch = FetchType.LAZY)
     private int age;
 
-    @OneToOne(mappedBy = "author", cascade = CascadeType.ALL,
-            fetch = FetchType.LAZY)
-    private Book book;
 
 
     @Override

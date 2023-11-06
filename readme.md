@@ -2392,3 +2392,91 @@ Next to the parent entity, Hibernate fetched the child entity as well. Obviously
 The secondary query is caused by a parent-side dilemma. Without fetching the child entity, the JPA persistent provider (Hibernate) cannot know if it should assign the child reference to null or to an Object (concrete object or proxy object). Adding non-nullability awareness via the optional=false element to @OneToOne doesn’t help in this case.
 
 A workaround consists of relying on Bytecode Enhancement and @LazyToOne(LazyToOneOption.NO\_PROXY) on the parent-side. Or, even better, rely on unidirectional @OneToOne and @MapsId.
+
+### @MapsId to the Rescue of @OneToOne
+
+The @MapsId is a JPA 2.0 annotation that can be applied to @ManyToOne and unidirectional (or bidirectional) @OneToOne associations. Via this annotation, the book table’s primary key can also be a foreign key referencing the author’s table primary key.
+
+The author and book tables share primary keys
+
+![image.png](assets/imageasfd.png)
+
+You add @MapsId to the child entity, as shown here:
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+private String title;
+private String isbn;
+@MapsId
+@OneToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+// getters and setters omitted for brevity
+}
+```
+
+Check out the identifier of the Book entity. There is no need for it to be generated (@GeneratedValue is not present) since this identifier is exactly the identifier of the author association. The Book identifier is set by Hibernate on your behalf.
+
+The @JoinColumn annotation is used to customize the name of the primary key column
+
+The parent entity is quite simple because there is no need to have a bidirectional @OneToOne (if this is what you initially had). The Author is as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+// getters and setters omitted for brevity
+}
+```
+
+Now, you can persist a Book via a service-method as follows
+
+```
+@Transactional
+public void newBookOfAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = new Book();
+book.setTitle("A History of Ancient Prague");
+book.setIsbn("001-JN");
+// this will set the id of the book as the id of the author
+book.setAuthor(author);
+bookRepository.save(book);
+}
+```
+
+Calling newBookOfAuthor() reveals the following INSERT statement (this is the effect of calling the save() method):
+
+```
+INSERT INTO book (isbn, title, author_id)
+VALUES (?, ?, ?)
+Binding:[001-JN, A History of Ancient Prague, 1]
+```
+
+Notice that author\_id was set to the author identifier. This means that the parent and the child tables share the same primary key.
+
+Further, the developer can fetch the Book via the Author identifier, as follows
+
+
+```
+@Transactional(readOnly = true)
+public Book fetchBookByAuthorId() {
+Author author = authorRepository.findById(1L).orElseThrow();
+return bookRepository.findById(author.getId()).orElseThrow();
+}
+```
+
+There are a bunch of advantages of using @MapsId, as follows:
+
+* If Book is present in the Second Level Cache it will be fetched accordingly (no extra database round trip is needed). This is the main drawback of a regular unidirectional @OneToOne.
+* Fetching the Author doesn’t automatically trigger an unnecessary additional query for fetching the Book as well. This is the main drawback of a regular bidirectional @OneToOne.
+* Sharing the primary key reduces memory footprint (no need to index both the primary key and the foreign key)
