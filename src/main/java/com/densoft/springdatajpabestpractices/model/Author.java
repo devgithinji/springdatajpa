@@ -2,6 +2,7 @@ package com.densoft.springdatajpabestpractices.model;
 
 import jakarta.persistence.*;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -10,6 +11,7 @@ import java.util.List;
 
 @Entity
 @Getter
+@Setter
 public class Author implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
@@ -39,27 +41,26 @@ public class Author implements Serializable {
         return this;
     }
 
-    public Author setId(Long id) {
+    public Author id(Long id) {
         this.id = id;
         return this;
     }
 
-    public Author setName(String name) {
+    public Author name(String name) {
         this.name = name;
         return this;
     }
 
-    public Author setGenre(String genre) {
+    public Author genre(String genre) {
         this.genre = genre;
         return this;
     }
 
-    public Author setAge(int age) {
+    public Author age(int age) {
         this.age = age;
         return this;
     }
-
-    public Author setBooks(List<Book> books) {
+    public Author books(List<Book> books) {
         this.books = books;
         return this;
     }

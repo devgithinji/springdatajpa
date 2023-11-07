@@ -24,25 +24,25 @@ public class Book implements Serializable {
     @JoinColumn(name = "author_id")
     private Author author;
 
-    public Book setId(Long id) {
+
+    public Book id(Long id) {
         this.id = id;
         return this;
     }
-
-    public Book setTitle(String title) {
+    public Book title(String title) {
         this.title = title;
         return this;
     }
-
-    public Book setIsbn(String isbn) {
+    public Book isbn(String isbn) {
         this.isbn = isbn;
         return this;
     }
-
-    public Book setAuthor(Author author) {
+    public Book author(Author author) {
         this.author = author;
         return this;
     }
+
+
 
 
     @Override
