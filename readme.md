@@ -2958,3 +2958,145 @@ Optionalstring fetchGenreByName(String name);
 nativeQuery=true)
 Optionalstring fetchGenreByNameNative(String name);
 ```
+
+### How to Write Immutable Entities
+
+An immutable entity must respect the following contract:
+
+1. It must be annotated with @Immutable(org.hibernate. annotations.Immutable)
+2. It must not contain any kind of association (@ElementCollection, @OneToOne, @OneToMany, @ManyToOne, or @ManyToMany)
+3. The hibernate.cache.use\_reference\_entries configuration property must be set to true
+
+An immutable entity is stored in the Second Level Cache as an entity reference instead as a disassembled state. This will prevent the performance penalty of reconstructing an entity from its disassembled state
+
+Here an immutable entity will be stored in the Second Level Cache:
+
+```
+@Entity
+@Immutable
+@Cache(usage = CacheConcurrencyStrategy.READ_ONLY, region = "Author")
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+private String name;
+private String genre;
+private int age;
+// getters and setters omitted for brevity
+}
+```
+
+solution relies on the EhCache implementation of the Second Level Cache.
+
+Now, let’s apply the CRUD operations to this entity:
+
+Creating a new Author: The following method creates a new Author and persists it in the database. Moreover, this Author will be stored in the Second Level Cache via the write-through strategy
+
+```
+public void newAuthor() {
+Author author = new Author();
+author.setId(1L);
+author.setName("Joana Nimar");
+author.setGenre("History");
+author.setAge(34);
+authorRepository.save(author);
+}
+```
+
+Fetching the created Author: The next method fetches the created Author from the Second Level Cache, without hitting the database:
+
+```
+public void fetchAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+System.out.println(author);
+}
+```
+
+Updating Author: This operation will not work since the Author is immutable (it cannot be modified). This will not cause any errors, it will just be silently ignored:
+
+```
+@Transactional
+public void updateAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+author.setAge(45);
+}
+```
+
+Deleting Author: This operation will fetch the entity from the Second Level Cache and will delete it from both places (the Second Level Cache and the database):
+
+```
+public void deleteAuthor() {
+authorRepository.deleteById(1L);
+}
+```
+
+Entities of immutable classes are automatically loaded as read-only entities.
+
+The concept of immutable entities can be applied in various real-world situations where you want to ensure that the state of an object remains constant after its creation. Here are a few real-world use cases with code examples:
+
+##### **Financial Transactions**:
+
+Immutable objects are well-suited for representing financial transactions, as they should not change once created. For example, in a banking application, you might have an `ImmutableTransaction` class:
+
+```
+public final class ImmutableTransaction {
+private final String transactionId;
+private final BigDecimal amount;
+private final LocalDateTime timestamp;public ImmutableTransaction(String transactionId, BigDecimal amount, LocalDateTime timestamp) {
+this.transactionId = transactionId;
+this.amount = amount;
+this.timestamp = timestamp;
+}// Getters for fields}
+```
+
+##### **Configuration Parameters**:
+
+Immutable objects can be used to represent configuration parameters that should remain constant during the application's runtime:
+
+```
+public final class AppConfig {
+private final String apiKey;
+private final int maxConnections;
+private final boolean useSSL;public AppConfig(String apiKey, int maxConnections, boolean useSSL) {
+this.apiKey = apiKey;
+this.maxConnections = maxConnections;
+this.useSSL = useSSL;
+}// Getters for fields}
+```
+
+##### **Immutable Collections**:
+
+Immutable collections, such as lists and maps, can be used when you want to ensure that a collection of data does not change:
+
+```
+Liststring names = List.of("Alice", "Bob", "Charlie");
+Mapstring, scores = Map.of("Alice", 95, "Bob", 88, "Charlie", 92);
+```
+
+##### **Thread Safety**:
+
+Immutability is a key concept for ensuring thread safety. Immutable objects can be safely shared between multiple threads without the need for explicit synchronization. In concurrent programming, you can use immutable objects to represent shared data structures.
+
+```
+public final class ImmutableCounter {
+private final AtomicInteger value;public ImmutableCounter(int initialValue) {
+this.value = new AtomicInteger(initialValue);
+}public ImmutableCounter increment() {
+return new ImmutableCounter(value.incrementAndGet());
+}public int getValue() {
+return value.get();
+}}
+```
+
+##### **Event Sourcing**:
+
+In event sourcing, you often use immutable events to represent changes in the state of an entity. Events are recorded and cannot be altered once created.
+
+```
+public final class OrderCreatedEvent {
+private final String orderId;
+private final LocalDateTime timestamp;public OrderCreatedEvent(String orderId, LocalDateTime timestamp) {
+this.orderId = orderId;
+this.timestamp = timestamp;
+}// Getters for fields}
+```
