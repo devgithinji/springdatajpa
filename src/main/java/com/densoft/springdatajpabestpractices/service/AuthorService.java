@@ -33,11 +33,19 @@ public class AuthorService {
 
     public void addBookToAuthor() {
 //        assuming we have existing author
-        Author author = authorRepo.findById(1L).orElseThrow();
-        Book book = new Book();
-        book.setIsbn("001-MJ");
-        book.setTitle("The Canterbury Anthology");
-        book.setAuthor(author);
-        bookRepo.save(book);
+//        Author proxy = authorRepo.getOne(1L);
+//        getOne deprecated
+        Author proxy = authorRepo.getReferenceById(1L);
+        try {
+            Book book = new Book();
+            book.setIsbn("001-MJ");
+            book.setTitle("The Canterbury Anthology");
+            book.setAuthor(proxy);
+            bookRepo.save(book);
+        } catch (Exception e) {
+
+            log.error("error: " + e.getMessage(), e);
+        }
+
     }
 }
