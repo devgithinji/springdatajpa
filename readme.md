@@ -3100,3 +3100,234 @@ this.orderId = orderId;
 this.timestamp = timestamp;
 }// Getters for fields}
 ```
+
+### How to Clone Entities
+
+Cloning entities is not a daily task but sometimes it can be the easiest way to avoid having to create entities from scratch. There are many well-known cloning techniques, such as manual cloning, cloning via clone(), cloning via a copy-constructor, using the Cloning library, cloning via serialization, and cloning via JSON.
+
+In the case of entities, you’ll rarely need to use deep cloning, but if this is what you need, then the Cloning6  library can be really useful. Most of the time, you’ll need to copy only a subset of the properties. In such cases, a copy-constructor provides full control over what is cloned.
+
+Let’s use the Author and Book entities involved in a bidirectional lazy @ManyToMany association for the example
+
+![image.png](assets/imagettt.png)
+
+#### Cloning the Parent and Associating the Books
+
+Let’s assume that Mark Janel is not the only author of these two books (My Anthology and 999 Anthology). Therefore, you need to add the co-author. The co-author has the same genre and books as Mark Janel, but has a different age and name
+
+One solution is to clone the Mark Janel entity and use the clone (new entity) to create the co-author.
+
+Assuming that the co-author’s name is Farell Tliop and he is 54, you can expect to obtain the data snapshot from Figure
+
+![image.png](assets/image.yyyiupng)
+
+To accomplish this task, you need to focus on the Author entity. Here, you add the following two constructors:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@ManyToMany(...)
+private Setbook books = new HashSet<>();
+private Author() {
+}
+public Author(Author author) {
+this.genre = author.getGenre();
+// associate books
+books.addAll(author.getBooks());
+}
+...
+}
+```
+
+The private constructor is needed internally by Hibernate. The public copy-constructor is what you need to clone an Author. More precisely, you clone the genre property only.
+
+Further, all the Book entities that were referenced by the initial Author entity (Mark Janel) are going to be associated with the new co-author entity (Farell Tliop).
+
+A service-method can create the co-author entity (Farell Tliop) via the initial Author entity (Mark Janel) as follows:
+
+```
+@Transactional
+public void cloneAuthor() {
+Author author = authorRepository.fetchByName("Mark Janel");
+Author authorClone = new Author(author);
+authorClone.setAge(54);
+authorClone.setName("Farell Tliop");
+authorRepository.save(authorClone);
+}
+```
+
+The triggered SQL statements—except for the SELECT JOIN FETCH triggered via fetchByName()—for fetching Mark Janel and the associated books are the expected INSERT statements:
+
+```
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding: [54, Anthology, Farell Tliop]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 1]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 2]
+```
+
+Notice that this example uses the Set#addAll() method and not the classical addBook() helper
+
+This is done to avoid the additional SELECT statements triggered by book.getAuthors().add(this):
+
+```
+public void addBook(Book book) {
+this.books.add(book);
+book.getAuthors().add(this);
+}For example, if you replace books.addAll(author.getBooks()) with:
+for (Book book : author.getBooks()) {
+addBook((book));
+}
+```
+
+Then, for each book, there is an additional SELECT. In other words, both sides of the association between the co-author and books are synchronized. For example, if you run the following snippet of code in the service-method before saving the co-author:
+
+authorClone.getBooks().forEach(  b -> System.out.println(b.getAuthors()));
+
+```
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23},
+Author{id=null, name=Farell Tliop, genre=Anthology, age=54}
+]
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23},
+Author{id=null, name=Farell Tliop, genre=Anthology, age=54}
+]
+```
+
+You can see that the author and the co-author IDs are null since they were not saved in the database and you are using the IDENTITY generator. On the other hand, if you run the same snippet of code, relying on Set#addAll(), you would obtain this:
+
+```
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+]
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+]
+```
+
+This time, the co-author is not visible since you didn’t set it on the books (you didn’t synchronized this side of the association). Since Set#addAll() helps you avoid additional SELECT statements, and after cloning an entity, you will likely immediately save it in the database, this should not be an issue.
+
+#### Cloning the Parent and the Books
+
+This time, assume that you want to clone the Author (Mark Janel) and the associated books. Therefore, you should expect something like Figure
+
+![image.png](assets/imagelkjj.png)
+
+To clone the Book, you need to add the proper constructors in the Book entity, as follows:
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+private Book() {
+}
+public Book(Book book) {
+this.title = book.getTitle();
+this.isbn = book.getIsbn();
+}
+...
+}
+```
+
+The private constructor is needed internally by Hibernate. The public copyconstructor clones the Book. This example clones all properties of the Book.
+
+Further, you would provide the Author constructors:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@ManyToMany(...)
+private Setbook books = new HashSet<>();
+private Author() {
+}
+public Author(Author author) {
+this.genre = author.getGenre();
+// clone books
+for (Book book : author.getBooks()) {
+addBook(new Book(book));
+}
+}
+public void addBook(Book book) {
+this.books.add(book);
+book.getAuthors().add(this);
+}
+...
+}
+```
+
+The service-method remains the same:
+
+```
+@Transactional
+public void cloneAuthor() {
+Author author = authorRepository.fetchByName("Mark Janel");
+Author authorClone = new Author(author);
+authorClone.setAge(54);
+authorClone.setName("Farell Tliop");
+authorRepository.save(authorClone);
+}
+```
+
+The triggered SQL statements—except the SELECT JOIN FETCH triggered via fetchByName()—for fetching Mark Janel and the associated books are the expected INSERT statements:
+
+```
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding: [54, Anthology, Farell Tliop]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding: [001, My Anthology]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding: [002, 999 Anthology]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 1]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 2]
+```
+
+#### Joining These Cases
+
+You can easily decide between these two cases (cloning the parent and associating the books or cloning the parent and the books) from the service-method by using a boolean argument to reshape the copy-constructor of Author, as shown here:
+
+
+```
+public Author(Author author, boolean cloneChildren) {
+this.genre = author.getGenre();
+if (!cloneChildren) {
+// associate books
+books.addAll(author.getBooks());
+} else {
+// clone each book
+for (Book book : author.getBooks()) {
+addBook(new Book(book));
+}
+}
+}
+```
