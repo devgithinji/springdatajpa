@@ -20,10 +20,29 @@ public class Book implements Serializable {
     private String title;
     private String isbn;
     private int price;
-//    @MapsId
-//    @OneToOne(fetch = FetchType.LAZY)
-//    @JoinColumn(name = "author_id")
-//    private Author author;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id")
+    private Author author;
+
+    public Book setId(Long id) {
+        this.id = id;
+        return this;
+    }
+
+    public Book setTitle(String title) {
+        this.title = title;
+        return this;
+    }
+
+    public Book setIsbn(String isbn) {
+        this.isbn = isbn;
+        return this;
+    }
+
+    public Book setAuthor(Author author) {
+        this.author = author;
+        return this;
+    }
 
 
     @Override

@@ -11,12 +11,7 @@ class AuthorServiceTest {
     private AuthorService authorService;
 
     @Test
-    void fetchBookByAuthorId() {
-        authorService.fetchBookByAuthorId();
-    }
-
-    @Test
-    void newBookOfAuthor() {
-        authorService.newBookOfAuthor();
+    void createAuthor() {
+        authorService.createAuthor();
     }
 }

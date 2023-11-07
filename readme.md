@@ -2466,7 +2466,6 @@ Notice that author\_id was set to the author identifier. This means that the par
 
 Further, the developer can fetch the Book via the Author identifier, as follows
 
-
 ```
 @Transactional(readOnly = true)
 public Book fetchBookByAuthorId() {
@@ -2519,7 +2518,6 @@ Class? extends Payload[] payload() default {};
 }
 ```
 
-
 Following the Bean Validation documentation, the @JustOneOfMany annotation is empowered by the following validation:
 
 ```
@@ -2534,7 +2532,6 @@ review.getBook(), review.getArticle(), review.getMagazine())
 }
 }
 ```
-
 
 Finally, just add the @JustOneOfMany annotation at the class-level to the Review entity:
 
@@ -2594,3 +2591,223 @@ END;
 ```
 
 ## Entities
+
+### How to Adopt a Fluent API Style in Entities
+
+Consider the Author and Book entities, which are involved in a bidirectional lazy @OneToMany association,
+
+![image.png](assets/imagewewewe.png)
+
+Usually, you can create an Author with Books as follows (e.g., one author with two books):
+
+```
+Author author = new Author();
+author.setName("Joana Nimar");
+author.setAge(34);
+author.setGenre("History");Book book1 = new Book();
+book1.setTitle("A History of Ancient Prague");
+book1.setIsbn("001-JN");Book book2 = new Book();
+book2.setTitle("A People's History");
+book2.setIsbn("002-JN");// addBook() is a helper method defined in Author class
+author.addBook(book1);
+author.addBook(book2);
+```
+
+You can also write this snippet in fluent-style in at least two ways.
+
+Fluent-style is primarily designed to be readable and to create a code-flowing sensation.
+
+#### Fluent-Style via Entity Setters
+
+Let’s employee fluent-style via the entity setters. Typically, an entity setter method returns void. You can alter the entity setters to return this instead of void as follows (this should be done for the helper methods as well):
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+public Author addBook(Book book) {
+this.books.add(book);
+book.setAuthor(this);
+return this;
+}
+public Author removeBook(Book book) {
+book.setAuthor(null);
+this.books.remove(book);
+return this;
+}
+public Author setId(Long id) {
+this.id = id;
+return this;
+}
+public Author setName(String name) {
+this.name = name;
+return this;
+}
+public Author setGenre(String genre) {
+this.genre = genre;
+return this;
+}
+public Author setAge(int age) {
+this.age = age;
+return this;
+}
+public Author setBooks(Listbook books) {
+this.books = books;
+return this;
+}
+// getters omitted for brevity
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+public Book setId(Long id) {
+this.id = id;
+return this;
+}
+public Book setTitle(String title) {
+this.title = title;
+return this;
+}public Book setIsbn(String isbn) {
+this.isbn = isbn;
+return this;
+}
+public Book setAuthor(Author author) {
+this.author = author;
+return this;
+}
+// getters omitted for brevity
+}
+```
+
+The setters return this instead of void, so they can be chained in a fluent-style as follows
+
+```
+Author author = new Author()
+.setName("Joana Nimar")
+.setAge(34)
+.setGenre("History")
+.addBook(new Book()
+.setTitle("A History of Ancient Prague")
+.setIsbn("001-JN"))
+.addBook(new Book()
+.setTitle("A People's History")
+.setIsbn("002-JN"));
+```
+
+#### Fluent-Style via Additional Methods
+
+You can also implement a fluent-style approach via other methods, instead of altering the entity setters, as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+public Author addBook(Book book) {
+this.books.add(book);
+book.setAuthor(this);
+return this;
+}
+public Author removeBook(Book book) {
+book.setAuthor(null);
+this.books.remove(book);
+return this;
+}
+public Author id(Long id) {
+this.id = id;
+return this;
+}
+public Author name(String name) {
+this.name = name;
+return this;
+}
+public Author genre(String genre) {
+this.genre = genre;
+return this;
+}
+public Author age(int age) {
+this.age = age;
+return this;
+}
+public Author books(Listbook books) {
+this.books = books;
+return this;
+}
+// getters and setters omitted for brevity
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+public Book id(Long id) {
+this.id = id;
+return this;
+}
+public Book title(String title) {
+this.title = title;
+return this;
+}
+public Book isbn(String isbn) {
+this.isbn = isbn;
+return this;
+}
+public Book author(Author author) {
+this.author = author;
+return this;
+}
+// getters and setters omitted for brevity
+}
+```
+
+This time, these additional methods can be used in a fluent-style approach, as shown in the following snippet of code:
+
+```
+Author author = new Author()
+.name("Joana Nimar")
+.age(34)
+.genre("History")
+.addBook(new Book()
+.title("A History of Ancient Prague")
+.isbn("001-JN"))
+.addBook(new Book()
+.title("A People's History")
+.isbn("002-JN"));
+```
