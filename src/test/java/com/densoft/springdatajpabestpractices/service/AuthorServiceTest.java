@@ -14,4 +14,9 @@ class AuthorServiceTest {
     void createAuthor() {
         authorService.createAuthor();
     }
+
+    @Test
+    void addBookToAuthor() {
+        authorService.addBookToAuthor();
+    }
 }
