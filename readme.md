@@ -3363,3 +3363,63 @@ Hibernate Bytecode Enhancement serves three main mechanisms (for each mechanism,
 1. Dirty Tracking (covered in this item): enableDirtyTracking
 2. Attribute lazy initialization : enableLazyInitialization
 3. Association management (automatic sides synchronization in the case of bidirectional associations): enableAssociationManagement
+
+
+### How to Map a Boolean to a Yes/No
+
+Consider a legacy database that has a table author with the following Data Definition Language (DDL):
+
+CREATE TABLE author (
+id bigint(20) NOT NULL AUTO_INCREMENT,
+age int(11) NOT NULL,
+best_selling varchar(3) NOT NULL,
+genre varchar(255) DEFAULT NULL,
+name varchar(255) DEFAULT NULL,
+PRIMARY KEY (id)
+);
+
+Notice the best\_selling column. This column stores two possible values, Yes or No, indicating if the author is a best-selling author or not. Further, let’s assume that this schema cannot be modified (e.g., it’s a legacy and you can’t modify it) and the best\_selling column should be mapped to a Boolean value.
+
+Obviously, declaring the corresponding entity property as Boolean is necessary but not sufficient:
+
+@Entity
+public class Author implements Serializable {
+...
+@NotNull
+private Boolean bestSelling;
+...
+public Boolean isBestSelling() {
+return bestSelling;
+}
+public void setBestSelling(Boolean bestSelling) {
+this.bestSelling = bestSelling;
+}
+}
+
+At this point, Hibernate will attempt to map this Boolean as shown in the following table:
+
+![image.png](assets/imageewew.png)
+
+So, none of these mappings matches VARCHAR(3). An elegant solution consists of writing a custom converter that Hibernate will apply to all CRUD operations. This can be done by implementing the AttributeConverter interface and overriding its two methods:
+
+@Converter(autoApply = true)
+public class BooleanConverter
+implements AttributeConverter<Boolean, String> {
+@Override
+public String convertToDatabaseColumn(Boolean attr) {
+return attr == null ? "No" : "Yes";
+}
+@Override
+public Boolean convertToEntityAttribute(String dbData) {
+return !"No".equals(dbData);
+}
+}
+
+The convertToDatabaseColumn() converts from Boolean to String while convertToEntityAttribute() converts from String to Boolean.
+
+This converter is annotated with @Converter(autoApply = true), which means that this converter will be used for all attributes of the converted type (Boolean). To nominate the attributes, simply remove autoApply or set it to false and add @Converter at the attribute-level, as shown here:
+
+@Convert(converter = BooleanConverter.class)
+private Boolean bestSelling;
+
+Notice that AttributeConverter cannot be applied to attributes annotated with @Enumerated.
