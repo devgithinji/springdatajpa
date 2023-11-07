@@ -3331,3 +3331,35 @@ addBook(new Book(book));
 }
 }
 ```
+
+### Why and How to Activate Dirty Tracking
+
+Dirty Checking is a Hibernate mechanism dedicated to detecting, at flush time, the managed entities that have been modified since they were loaded in the current Persistence Context. It then fires the corresponding SQL UPDATE statements on behalf of the application (the data access layer). Note that Hibernate scans all managed entities even if only one property of a managed entity has changed.
+
+Prior to Hibernate 5, the Dirty Checking mechanism relies on the Java Reflection API to check every property of every managed entity. From a performance perspective, this approach is “harmless” as long as the number of entities is relatively small. For a large number of managed entities, this approach may cause performance penalties.
+
+Starting with Hibernate 5, the Dirty Checking mechanism relies on the Dirty Tracking mechanism, which is the capability of an entity to track its own attributes’ changes. The Dirty Tracking mechanism results in better performance and its benefits are noticeable,
+
+![image.png](assets/imageyyyui.png)
+
+Generally speaking, Bytecode Enhancement is the process of instrumenting the bytecode of a Java class for certain purposes. Hibernate Bytecode Enhancement is a process that commonly takes place at build-time; therefore, it doesn’t affect the runtime of the application (there is no runtime performance penalty, but of course there will be an overhead during the build-time). However, it can be set to take place at runtime or deploy-time.
+
+You can add Bytecode Enhancement to your application by adding the corresponding Maven or Gradle plug-in (Ant is also supported). Once the Bytecode Enhancement plugin is added, the bytecode of all the entity classes is instrumented. This process is known as instrumention, and it consists of adding to the code a set of instructions needed to serve the chosen configurations (e.g., you need the entity’s code to be instrumented for Dirty Tracking; via this instrumentation, an entity is capable of tracking which of its attributes has changed). At flush time, Hibernate will require each entity to report any changes, rather than relying on state-diff computations. You enable Dirty Tracking via the enableDirtyTracking configuration. Nevertheless, having a thin Persistence Context is still recommended. The hydrated state (entity snapshot) is still saved in the Persistence Context.
+
+To check if Dirty Tracking was activated, simply decompile the source code of an entity class and search for the following code:
+
+@Transient
+private transient DirtyTracker $$_hibernate_tracker;
+
+\$\$\_hibernate\_tracker is used to register the entity modifications. During flushing, Hibernate calls a method named \$\$\_hibernate\_hasDirtyAttributes(). This method returns the dirty properties as a String[].
+
+Or, just check the logs for messages, as shown here:
+
+INFO: Enhancing [com.bookstore.entity.Author] as Entity
+Successfully enhanced class [D:\...\com\bookstore\entity\Author.class
+
+Hibernate Bytecode Enhancement serves three main mechanisms (for each mechanism, Hibernate will push in the bytecode the proper instrumentation instructions):
+
+1. Dirty Tracking (covered in this item): enableDirtyTracking
+2. Attribute lazy initialization : enableLazyInitialization
+3. Association management (automatic sides synchronization in the case of bidirectional associations): enableAssociationManagement
