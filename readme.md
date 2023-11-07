@@ -2812,7 +2812,7 @@ Author author = new Author()
 .isbn("002-JN"));
 ```
 
-## How to Populate a Child-Side Parent Association via a Hibernate-Specific Proxy
+### How to Populate a Child-Side Parent Association via a Hibernate-Specific Proxy
 
 You can fetch an entity by identifier via the Spring built-in query methods, findById() or getOne(). Behind the findById() method, Spring uses EntityManager#find(), and behind the getOne() method, Spring uses EntityManager#getReference().
 
@@ -2830,7 +2830,7 @@ Therefore, consider that the Author and Book entities are involved in an unidire
 
 Consider that, in the author table, there is one author with an ID of 1. Now, let’s create a Book for this entry.
 
-### Using findById()
+#### Using findById()
 
 Relying on findById() may result in the following code (of course, don’t use orElseThrow() in production; here, orElseThrow() is just a quick shortcut to extract the value from the returned Optional):
 
@@ -2861,7 +2861,7 @@ VALUES (?, ?, ?)
 
 First, a SELECT query is triggered via findById(). This SELECT fetches the author from the database. Next, the INSERT statement saves the new book by setting the foreign key, author\_id.
 
-### Using getOne()
+#### Using getOne()
 
 Relying on getOne() may result in the following code:
 
@@ -2882,4 +2882,79 @@ Since Hibernate can set the underlying foreign key value of an uninitialized pro
 ```
 INSERT INTO book (author_id, isbn, title)
 VALUES (?, ?, ?)
+```
+
+### How to Use Java 8 Optional in Persistence Layer
+
+The goal of this item is to identify the best practices for using Java 8 Optional API in the persistence layer. To show these practices in examples, we use the well-known Author and Book entities that are involved in a bidirectional lazy @OneToMany association.
+
+#### Optional in Entities
+
+Optional can be used in entities. More precisely, Optional should be used in certain getters of an entity (e.g., getters that are prone to return null). In the case of the Author entity, Optional can be used for the getters corresponding to name and genre, while for the Book entity, Optional can be used for title, isbn, and author, as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+...
+public Optionalstring getName() {
+return Optional.ofNullable(name);
+}
+public Optionalstring getGenre() {
+return Optional.ofNullable(genre);
+}
+...
+}
+@Entity
+public class Book implements Serializable {
+...
+public Optionalstring getTitle() {
+return Optional.ofNullable(title);
+}
+public Optionalstring getIsbn() {
+return Optional.ofNullable(isbn);
+}
+public Optionalauthor getAuthor() {
+return Optional.ofNullable(author);
+}
+...
+}
+```
+
+Do not use Optional for:
+
+1. Entity fields (Optional is not Serializable)
+2. Constructor and setter arguments
+3. Getters that return primitive types and collections
+4. Getters specific to the primary key
+
+#### Optional in Repositories
+
+Optional can be used in repositories. More precisely, Optional can be used to wrap the result set of a query. Spring already comes with built-in methods that return Optional, such as findById() and findOne(). The following snippet of code uses the findById() method:
+
+Optional author = authorRepository.findById(1L);
+
+In addition, you can write queries that return Optional, as in the following two examples:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+Optionalauthor findByName(String name);
+}@Repository
+@Transactional(readOnly = true)
+public interface BookRepository extends JpaRepositorybook, {
+Optionalbook findByTitle(String title);
+}
+```
+
+Do not assume that Optional works only in conjunction with the Query Builder mechanism. It works with JPQL and native queries as well. The following queries are perfectly okay:
+
+```
+@Query("SELECT a FROM Author a WHERE a.name=?1")
+Optionalauthor fetchByName(String name);
+@Query("SELECT a.genre FROM Author a WHERE a.name=?1")
+Optionalstring fetchGenreByName(String name);
+@Query(value="SELECT a.genre FROM author a WHERE a.name=?1",
+nativeQuery=true)
+Optionalstring fetchGenreByNameNative(String name);
 ```
