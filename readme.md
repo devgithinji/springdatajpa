@@ -3316,7 +3316,6 @@ Binding: [2, 2]
 
 You can easily decide between these two cases (cloning the parent and associating the books or cloning the parent and the books) from the service-method by using a boolean argument to reshape the copy-constructor of Author, as shown here:
 
-
 ```
 public Author(Author author, boolean cloneChildren) {
 this.genre = author.getGenre();
@@ -3364,11 +3363,12 @@ Hibernate Bytecode Enhancement serves three main mechanisms (for each mechanism,
 2. Attribute lazy initialization : enableLazyInitialization
 3. Association management (automatic sides synchronization in the case of bidirectional associations): enableAssociationManagement
 
-
 ### How to Map a Boolean to a Yes/No
 
 Consider a legacy database that has a table author with the following Data Definition Language (DDL):
 
+
+```
 CREATE TABLE author (
 id bigint(20) NOT NULL AUTO_INCREMENT,
 age int(11) NOT NULL,
@@ -3377,11 +3377,13 @@ genre varchar(255) DEFAULT NULL,
 name varchar(255) DEFAULT NULL,
 PRIMARY KEY (id)
 );
+```
 
 Notice the best\_selling column. This column stores two possible values, Yes or No, indicating if the author is a best-selling author or not. Further, let’s assume that this schema cannot be modified (e.g., it’s a legacy and you can’t modify it) and the best\_selling column should be mapped to a Boolean value.
 
 Obviously, declaring the corresponding entity property as Boolean is necessary but not sufficient:
 
+```
 @Entity
 public class Author implements Serializable {
 ...
@@ -3395,6 +3397,7 @@ public void setBestSelling(Boolean bestSelling) {
 this.bestSelling = bestSelling;
 }
 }
+```
 
 At this point, Hibernate will attempt to map this Boolean as shown in the following table:
 
@@ -3402,9 +3405,10 @@ At this point, Hibernate will attempt to map this Boolean as shown in the follow
 
 So, none of these mappings matches VARCHAR(3). An elegant solution consists of writing a custom converter that Hibernate will apply to all CRUD operations. This can be done by implementing the AttributeConverter interface and overriding its two methods:
 
+```
 @Converter(autoApply = true)
 public class BooleanConverter
-implements AttributeConverter<Boolean, String> {
+implements AttributeConverterboolean, {
 @Override
 public String convertToDatabaseColumn(Boolean attr) {
 return attr == null ? "No" : "Yes";
@@ -3414,6 +3418,7 @@ public Boolean convertToEntityAttribute(String dbData) {
 return !"No".equals(dbData);
 }
 }
+```
 
 The convertToDatabaseColumn() converts from Boolean to String while convertToEntityAttribute() converts from String to Boolean.
 
@@ -3423,3 +3428,94 @@ This converter is annotated with @Converter(autoApply = true), which means that 
 private Boolean bestSelling;
 
 Notice that AttributeConverter cannot be applied to attributes annotated with @Enumerated.
+
+### The Best Way to Publish Domain Events from Aggregate Roots
+
+Entities managed by Spring repositories are known as aggregate roots. In a Domain Driven Design (DDD), the aggregate roots can publish events or domain events. Starting with the Spring Data Ingalls release, publishing such events by aggregate roots (entities) became much easier.
+
+Spring Data comes with a @DomainEvents annotation that can be used on a method of the aggregate root to make that publication as easy as possible. A method annotated with @DomainEvents is recognized by Spring Data and is automatically invoked whenever an entity is saved using the proper repository.
+
+Moreover, besides the @DomainEvents annotation, Spring Data provides the @AfterDomainEventsPublication annotation to indicate the method that should be automatically called to clear events after publication. In code, this commonly looks as follows:
+
+```
+class MyAggregateRoot {
+@DomainEvents
+Collection
+<object> domainEvents() {
+// return events you want to get published here
+}
+@AfterDomainEventsPublication
+void callbackMethod() {
+// potentially clean up domain events list
+}
+}
+```
+
+</object>
+
+But Spring Data Commons comes with a convenient template base class (AbstractAggregateRoot) that helps register domain events and uses the publication mechanism implied by @DomainEvents and @AfterDomainEventsPublication. The events are registered by calling the AbstractAggregateRoot#registerEvent() method.
+
+Let’s look at a sample application that relies on AbstractAggregateRoot and its registerEvent() method. There are two entities—Book and BookReview—involved in a bidirectional lazy @OneToMany association. A new book review is saved to the database in CHECK status and a CheckReviewEvent is published. This event is responsible for checking the review grammar, content, etc., and for switching the review status from CHECK to ACCEPT or REJECT.
+
+It then propagates the new status in the database. So, this event is registered before saving the book review in CHECK status and is published automatically after you call the BookReviewRepository.save() method. After publication, the event is cleared.
+
+Let’s start with the aggregator root, BookReview:
+
+```
+@Entity
+public class BookReview extends AbstractAggregateRootbookreview
+implements Serializable {
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String content;
+private String email;
+@Enumerated(EnumType.STRING)
+private ReviewStatus status;
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "book_id")
+private Book book;
+public void registerReviewEvent() {
+registerEvent(new CheckReviewEvent(this));
+}
+// getters, setters, etc omitted for brevity
+}
+```
+
+BookReview extends AbstractAggregateRoot and exposes the registerReviewEvent() method to register domain events via AbstractAggregateRoot#registerEvent(). The registerReviewEvent() method is called to register the event (CheckReviewEvent) before saving a book review:
+
+```
+@Service
+public class BookstoreService {
+private final static String RESPONSE
+= "We will check your review and get back to you with an email
+ASAP :)";
+private final BookRepository bookRepository;
+private final BookReviewRepository bookReviewRepository;
+...
+@Transactional
+public String postReview(BookReview bookReview) {
+Book book = bookRepository.getOne(1L);
+bookReview.setBook(book);
+bookReview.registerReviewEvent();
+bookReviewRepository.save(bookReview);
+return RESPONSE;
+}
+}
+```
+
+After the save() method is called and the transaction commits, the event is published. The CheckReviewEvent is listed here (it passes the bookReview instance, but you can pass only the needed properties as well by writing the proper constructor):
+
+```
+public class CheckReviewEvent {
+private final BookReview bookReview;
+public CheckReviewEvent(BookReview bookReview) {
+this.bookReview = bookReview;
+}
+public BookReview getBookReview() {
+return bookReview;
+}
+}
+```
+
+Finally, you need the event handler, which is implemented as follows:
