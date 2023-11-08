@@ -3,12 +3,10 @@ package com.densoft.springdatajpabestpractices.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.Where;
 
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 @Entity
@@ -27,6 +25,45 @@ public class Author implements Serializable {
     @Basic(fetch = FetchType.LAZY)
     private int age;
 
+    @OneToMany(cascade = CascadeType.ALL,
+            mappedBy = "author", orphanRemoval = true)
+    private List<Book> books = new ArrayList<>();
+
+    public Author addBook(Book book) {
+        this.books.add(book);
+        book.setAuthor(this);
+        return this;
+    }
+
+    public Author removeBook(Book book) {
+        book.setAuthor(null);
+        this.books.remove(book);
+        return this;
+    }
+
+    public Author id(Long id) {
+        this.id = id;
+        return this;
+    }
+
+    public Author name(String name) {
+        this.name = name;
+        return this;
+    }
+
+    public Author genre(String genre) {
+        this.genre = genre;
+        return this;
+    }
+
+    public Author age(int age) {
+        this.age = age;
+        return this;
+    }
+    public Author books(List<Book> books) {
+        this.books = books;
+        return this;
+    }
 
 
     @Override

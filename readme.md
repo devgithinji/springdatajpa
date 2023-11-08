@@ -2466,7 +2466,6 @@ Notice that author\_id was set to the author identifier. This means that the par
 
 Further, the developer can fetch the Book via the Author identifier, as follows
 
-
 ```
 @Transactional(readOnly = true)
 public Book fetchBookByAuthorId() {
@@ -2519,7 +2518,6 @@ Class? extends Payload[] payload() default {};
 }
 ```
 
-
 Following the Bean Validation documentation, the @JustOneOfMany annotation is empowered by the following validation:
 
 ```
@@ -2534,7 +2532,6 @@ review.getBook(), review.getArticle(), review.getMagazine())
 }
 }
 ```
-
 
 Finally, just add the @JustOneOfMany annotation at the class-level to the Review entity:
 
@@ -2592,3 +2589,933 @@ a book, a magazine or an article';
 END IF;
 END;
 ```
+
+## Entities
+
+### How to Adopt a Fluent API Style in Entities
+
+Consider the Author and Book entities, which are involved in a bidirectional lazy @OneToMany association,
+
+![image.png](assets/imagewewewe.png)
+
+Usually, you can create an Author with Books as follows (e.g., one author with two books):
+
+```
+Author author = new Author();
+author.setName("Joana Nimar");
+author.setAge(34);
+author.setGenre("History");Book book1 = new Book();
+book1.setTitle("A History of Ancient Prague");
+book1.setIsbn("001-JN");Book book2 = new Book();
+book2.setTitle("A People's History");
+book2.setIsbn("002-JN");// addBook() is a helper method defined in Author class
+author.addBook(book1);
+author.addBook(book2);
+```
+
+You can also write this snippet in fluent-style in at least two ways.
+
+Fluent-style is primarily designed to be readable and to create a code-flowing sensation.
+
+#### Fluent-Style via Entity Setters
+
+Let’s employee fluent-style via the entity setters. Typically, an entity setter method returns void. You can alter the entity setters to return this instead of void as follows (this should be done for the helper methods as well):
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+public Author addBook(Book book) {
+this.books.add(book);
+book.setAuthor(this);
+return this;
+}
+public Author removeBook(Book book) {
+book.setAuthor(null);
+this.books.remove(book);
+return this;
+}
+public Author setId(Long id) {
+this.id = id;
+return this;
+}
+public Author setName(String name) {
+this.name = name;
+return this;
+}
+public Author setGenre(String genre) {
+this.genre = genre;
+return this;
+}
+public Author setAge(int age) {
+this.age = age;
+return this;
+}
+public Author setBooks(Listbook books) {
+this.books = books;
+return this;
+}
+// getters omitted for brevity
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+public Book setId(Long id) {
+this.id = id;
+return this;
+}
+public Book setTitle(String title) {
+this.title = title;
+return this;
+}public Book setIsbn(String isbn) {
+this.isbn = isbn;
+return this;
+}
+public Book setAuthor(Author author) {
+this.author = author;
+return this;
+}
+// getters omitted for brevity
+}
+```
+
+The setters return this instead of void, so they can be chained in a fluent-style as follows
+
+```
+Author author = new Author()
+.setName("Joana Nimar")
+.setAge(34)
+.setGenre("History")
+.addBook(new Book()
+.setTitle("A History of Ancient Prague")
+.setIsbn("001-JN"))
+.addBook(new Book()
+.setTitle("A People's History")
+.setIsbn("002-JN"));
+```
+
+#### Fluent-Style via Additional Methods
+
+You can also implement a fluent-style approach via other methods, instead of altering the entity setters, as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@OneToMany(cascade = CascadeType.ALL,
+mappedBy = "author", orphanRemoval = true)
+private Listbook books = new ArrayList<>();
+public Author addBook(Book book) {
+this.books.add(book);
+book.setAuthor(this);
+return this;
+}
+public Author removeBook(Book book) {
+book.setAuthor(null);
+this.books.remove(book);
+return this;
+}
+public Author id(Long id) {
+this.id = id;
+return this;
+}
+public Author name(String name) {
+this.name = name;
+return this;
+}
+public Author genre(String genre) {
+this.genre = genre;
+return this;
+}
+public Author age(int age) {
+this.age = age;
+return this;
+}
+public Author books(Listbook books) {
+this.books = books;
+return this;
+}
+// getters and setters omitted for brevity
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "author_id")
+private Author author;
+public Book id(Long id) {
+this.id = id;
+return this;
+}
+public Book title(String title) {
+this.title = title;
+return this;
+}
+public Book isbn(String isbn) {
+this.isbn = isbn;
+return this;
+}
+public Book author(Author author) {
+this.author = author;
+return this;
+}
+// getters and setters omitted for brevity
+}
+```
+
+This time, these additional methods can be used in a fluent-style approach, as shown in the following snippet of code:
+
+```
+Author author = new Author()
+.name("Joana Nimar")
+.age(34)
+.genre("History")
+.addBook(new Book()
+.title("A History of Ancient Prague")
+.isbn("001-JN"))
+.addBook(new Book()
+.title("A People's History")
+.isbn("002-JN"));
+```
+
+### How to Populate a Child-Side Parent Association via a Hibernate-Specific Proxy
+
+You can fetch an entity by identifier via the Spring built-in query methods, findById() or getOne(). Behind the findById() method, Spring uses EntityManager#find(), and behind the getOne() method, Spring uses EntityManager#getReference().
+
+Calling findById() returns the entity from the Persistence Context, the Second Level Cache, or the database (this is the strict order of attempting to find the indicated entity). Therefore, the returned entity is the same type as the declared entity mapping
+
+On the other hand, calling getOne() will return a Hibernate-specific proxy object. This is not the actual entity type. A Hibernate-specific proxy can be useful when a child entity can be persisted with a reference to its parent (@ManyToOne or @OneToOne lazy association).
+
+In such cases, fetching the parent entity from the database (executing the corresponding SELECT statement) is a performance penalty and merely a pointless action, because Hibernate can set the underlying foreign key value for an uninitialized proxy.
+
+Let’s put this statement in practice via the @ManyToOne association. This association is a common JPA association, and it maps exactly to the one-to-many table relationship.
+
+Therefore, consider that the Author and Book entities are involved in an unidirectional lazy @ManyToOne association. In the following example, the Author entity represents the parent-side, while the Book is the child-side. The author and book tables involved in this relationship are shown
+
+![image.png](assets/imagewewewty.png)
+
+Consider that, in the author table, there is one author with an ID of 1. Now, let’s create a Book for this entry.
+
+#### Using findById()
+
+Relying on findById() may result in the following code (of course, don’t use orElseThrow() in production; here, orElseThrow() is just a quick shortcut to extract the value from the returned Optional):
+
+```
+@Transactional
+public void addBookToAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+Book book = new Book();
+book.setIsbn("001-MJ");
+book.setTitle("The Canterbury Anthology");
+book.setAuthor(author);
+bookRepository.save(book);
+}
+```
+
+Calling addBookToAuthor() triggers the following SQL statements:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?INSERT INTO book (author_id, isbn, title)
+VALUES (?, ?, ?)
+```
+
+First, a SELECT query is triggered via findById(). This SELECT fetches the author from the database. Next, the INSERT statement saves the new book by setting the foreign key, author\_id.
+
+#### Using getOne()
+
+Relying on getOne() may result in the following code:
+
+```
+@Transactional
+public void addBookToAuthor() {
+Author proxy = authorRepository.getOne(1L);
+Book book = new Book();
+book.setIsbn("001-MJ");
+book.setTitle("The Canterbury Anthology");
+book.setAuthor(proxy);
+bookRepository.save(book);
+}
+```
+
+Since Hibernate can set the underlying foreign key value of an uninitialized proxy, this code triggers a single INSERT statement:
+
+```
+INSERT INTO book (author_id, isbn, title)
+VALUES (?, ?, ?)
+```
+
+### How to Use Java 8 Optional in Persistence Layer
+
+The goal of this item is to identify the best practices for using Java 8 Optional API in the persistence layer. To show these practices in examples, we use the well-known Author and Book entities that are involved in a bidirectional lazy @OneToMany association.
+
+#### Optional in Entities
+
+Optional can be used in entities. More precisely, Optional should be used in certain getters of an entity (e.g., getters that are prone to return null). In the case of the Author entity, Optional can be used for the getters corresponding to name and genre, while for the Book entity, Optional can be used for title, isbn, and author, as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+...
+public Optionalstring getName() {
+return Optional.ofNullable(name);
+}
+public Optionalstring getGenre() {
+return Optional.ofNullable(genre);
+}
+...
+}
+@Entity
+public class Book implements Serializable {
+...
+public Optionalstring getTitle() {
+return Optional.ofNullable(title);
+}
+public Optionalstring getIsbn() {
+return Optional.ofNullable(isbn);
+}
+public Optionalauthor getAuthor() {
+return Optional.ofNullable(author);
+}
+...
+}
+```
+
+Do not use Optional for:
+
+1. Entity fields (Optional is not Serializable)
+2. Constructor and setter arguments
+3. Getters that return primitive types and collections
+4. Getters specific to the primary key
+
+#### Optional in Repositories
+
+Optional can be used in repositories. More precisely, Optional can be used to wrap the result set of a query. Spring already comes with built-in methods that return Optional, such as findById() and findOne(). The following snippet of code uses the findById() method:
+
+Optional author = authorRepository.findById(1L);
+
+In addition, you can write queries that return Optional, as in the following two examples:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+Optionalauthor findByName(String name);
+}@Repository
+@Transactional(readOnly = true)
+public interface BookRepository extends JpaRepositorybook, {
+Optionalbook findByTitle(String title);
+}
+```
+
+Do not assume that Optional works only in conjunction with the Query Builder mechanism. It works with JPQL and native queries as well. The following queries are perfectly okay:
+
+```
+@Query("SELECT a FROM Author a WHERE a.name=?1")
+Optionalauthor fetchByName(String name);
+@Query("SELECT a.genre FROM Author a WHERE a.name=?1")
+Optionalstring fetchGenreByName(String name);
+@Query(value="SELECT a.genre FROM author a WHERE a.name=?1",
+nativeQuery=true)
+Optionalstring fetchGenreByNameNative(String name);
+```
+
+### How to Write Immutable Entities
+
+An immutable entity must respect the following contract:
+
+1. It must be annotated with @Immutable(org.hibernate. annotations.Immutable)
+2. It must not contain any kind of association (@ElementCollection, @OneToOne, @OneToMany, @ManyToOne, or @ManyToMany)
+3. The hibernate.cache.use\_reference\_entries configuration property must be set to true
+
+An immutable entity is stored in the Second Level Cache as an entity reference instead as a disassembled state. This will prevent the performance penalty of reconstructing an entity from its disassembled state
+
+Here an immutable entity will be stored in the Second Level Cache:
+
+```
+@Entity
+@Immutable
+@Cache(usage = CacheConcurrencyStrategy.READ_ONLY, region = "Author")
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+private String name;
+private String genre;
+private int age;
+// getters and setters omitted for brevity
+}
+```
+
+solution relies on the EhCache implementation of the Second Level Cache.
+
+Now, let’s apply the CRUD operations to this entity:
+
+Creating a new Author: The following method creates a new Author and persists it in the database. Moreover, this Author will be stored in the Second Level Cache via the write-through strategy
+
+```
+public void newAuthor() {
+Author author = new Author();
+author.setId(1L);
+author.setName("Joana Nimar");
+author.setGenre("History");
+author.setAge(34);
+authorRepository.save(author);
+}
+```
+
+Fetching the created Author: The next method fetches the created Author from the Second Level Cache, without hitting the database:
+
+```
+public void fetchAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+System.out.println(author);
+}
+```
+
+Updating Author: This operation will not work since the Author is immutable (it cannot be modified). This will not cause any errors, it will just be silently ignored:
+
+```
+@Transactional
+public void updateAuthor() {
+Author author = authorRepository.findById(1L).orElseThrow();
+author.setAge(45);
+}
+```
+
+Deleting Author: This operation will fetch the entity from the Second Level Cache and will delete it from both places (the Second Level Cache and the database):
+
+```
+public void deleteAuthor() {
+authorRepository.deleteById(1L);
+}
+```
+
+Entities of immutable classes are automatically loaded as read-only entities.
+
+The concept of immutable entities can be applied in various real-world situations where you want to ensure that the state of an object remains constant after its creation. Here are a few real-world use cases with code examples:
+
+##### **Financial Transactions**:
+
+Immutable objects are well-suited for representing financial transactions, as they should not change once created. For example, in a banking application, you might have an `ImmutableTransaction` class:
+
+```
+public final class ImmutableTransaction {
+private final String transactionId;
+private final BigDecimal amount;
+private final LocalDateTime timestamp;public ImmutableTransaction(String transactionId, BigDecimal amount, LocalDateTime timestamp) {
+this.transactionId = transactionId;
+this.amount = amount;
+this.timestamp = timestamp;
+}// Getters for fields}
+```
+
+##### **Configuration Parameters**:
+
+Immutable objects can be used to represent configuration parameters that should remain constant during the application's runtime:
+
+```
+public final class AppConfig {
+private final String apiKey;
+private final int maxConnections;
+private final boolean useSSL;public AppConfig(String apiKey, int maxConnections, boolean useSSL) {
+this.apiKey = apiKey;
+this.maxConnections = maxConnections;
+this.useSSL = useSSL;
+}// Getters for fields}
+```
+
+##### **Immutable Collections**:
+
+Immutable collections, such as lists and maps, can be used when you want to ensure that a collection of data does not change:
+
+```
+Liststring names = List.of("Alice", "Bob", "Charlie");
+Mapstring, scores = Map.of("Alice", 95, "Bob", 88, "Charlie", 92);
+```
+
+##### **Thread Safety**:
+
+Immutability is a key concept for ensuring thread safety. Immutable objects can be safely shared between multiple threads without the need for explicit synchronization. In concurrent programming, you can use immutable objects to represent shared data structures.
+
+```
+public final class ImmutableCounter {
+private final AtomicInteger value;public ImmutableCounter(int initialValue) {
+this.value = new AtomicInteger(initialValue);
+}public ImmutableCounter increment() {
+return new ImmutableCounter(value.incrementAndGet());
+}public int getValue() {
+return value.get();
+}}
+```
+
+##### **Event Sourcing**:
+
+In event sourcing, you often use immutable events to represent changes in the state of an entity. Events are recorded and cannot be altered once created.
+
+```
+public final class OrderCreatedEvent {
+private final String orderId;
+private final LocalDateTime timestamp;public OrderCreatedEvent(String orderId, LocalDateTime timestamp) {
+this.orderId = orderId;
+this.timestamp = timestamp;
+}// Getters for fields}
+```
+
+### How to Clone Entities
+
+Cloning entities is not a daily task but sometimes it can be the easiest way to avoid having to create entities from scratch. There are many well-known cloning techniques, such as manual cloning, cloning via clone(), cloning via a copy-constructor, using the Cloning library, cloning via serialization, and cloning via JSON.
+
+In the case of entities, you’ll rarely need to use deep cloning, but if this is what you need, then the Cloning6  library can be really useful. Most of the time, you’ll need to copy only a subset of the properties. In such cases, a copy-constructor provides full control over what is cloned.
+
+Let’s use the Author and Book entities involved in a bidirectional lazy @ManyToMany association for the example
+
+![image.png](assets/imagettt.png)
+
+#### Cloning the Parent and Associating the Books
+
+Let’s assume that Mark Janel is not the only author of these two books (My Anthology and 999 Anthology). Therefore, you need to add the co-author. The co-author has the same genre and books as Mark Janel, but has a different age and name
+
+One solution is to clone the Mark Janel entity and use the clone (new entity) to create the co-author.
+
+Assuming that the co-author’s name is Farell Tliop and he is 54, you can expect to obtain the data snapshot from Figure
+
+![image.png](assets/image.yyyiupng)
+
+To accomplish this task, you need to focus on the Author entity. Here, you add the following two constructors:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@ManyToMany(...)
+private Setbook books = new HashSet<>();
+private Author() {
+}
+public Author(Author author) {
+this.genre = author.getGenre();
+// associate books
+books.addAll(author.getBooks());
+}
+...
+}
+```
+
+The private constructor is needed internally by Hibernate. The public copy-constructor is what you need to clone an Author. More precisely, you clone the genre property only.
+
+Further, all the Book entities that were referenced by the initial Author entity (Mark Janel) are going to be associated with the new co-author entity (Farell Tliop).
+
+A service-method can create the co-author entity (Farell Tliop) via the initial Author entity (Mark Janel) as follows:
+
+```
+@Transactional
+public void cloneAuthor() {
+Author author = authorRepository.fetchByName("Mark Janel");
+Author authorClone = new Author(author);
+authorClone.setAge(54);
+authorClone.setName("Farell Tliop");
+authorRepository.save(authorClone);
+}
+```
+
+The triggered SQL statements—except for the SELECT JOIN FETCH triggered via fetchByName()—for fetching Mark Janel and the associated books are the expected INSERT statements:
+
+```
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding: [54, Anthology, Farell Tliop]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 1]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 2]
+```
+
+Notice that this example uses the Set#addAll() method and not the classical addBook() helper
+
+This is done to avoid the additional SELECT statements triggered by book.getAuthors().add(this):
+
+```
+public void addBook(Book book) {
+this.books.add(book);
+book.getAuthors().add(this);
+}For example, if you replace books.addAll(author.getBooks()) with:
+for (Book book : author.getBooks()) {
+addBook((book));
+}
+```
+
+Then, for each book, there is an additional SELECT. In other words, both sides of the association between the co-author and books are synchronized. For example, if you run the following snippet of code in the service-method before saving the co-author:
+
+authorClone.getBooks().forEach(  b -> System.out.println(b.getAuthors()));
+
+```
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23},
+Author{id=null, name=Farell Tliop, genre=Anthology, age=54}
+]
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23},
+Author{id=null, name=Farell Tliop, genre=Anthology, age=54}
+]
+```
+
+You can see that the author and the co-author IDs are null since they were not saved in the database and you are using the IDENTITY generator. On the other hand, if you run the same snippet of code, relying on Set#addAll(), you would obtain this:
+
+```
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+]
+[
+Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+]
+```
+
+This time, the co-author is not visible since you didn’t set it on the books (you didn’t synchronized this side of the association). Since Set#addAll() helps you avoid additional SELECT statements, and after cloning an entity, you will likely immediately save it in the database, this should not be an issue.
+
+#### Cloning the Parent and the Books
+
+This time, assume that you want to clone the Author (Mark Janel) and the associated books. Therefore, you should expect something like Figure
+
+![image.png](assets/imagelkjj.png)
+
+To clone the Book, you need to add the proper constructors in the Book entity, as follows:
+
+```
+@Entity
+public class Book implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String title;
+private String isbn;
+private Book() {
+}
+public Book(Book book) {
+this.title = book.getTitle();
+this.isbn = book.getIsbn();
+}
+...
+}
+```
+
+The private constructor is needed internally by Hibernate. The public copyconstructor clones the Book. This example clones all properties of the Book.
+
+Further, you would provide the Author constructors:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String name;
+private String genre;
+private int age;
+@ManyToMany(...)
+private Setbook books = new HashSet<>();
+private Author() {
+}
+public Author(Author author) {
+this.genre = author.getGenre();
+// clone books
+for (Book book : author.getBooks()) {
+addBook(new Book(book));
+}
+}
+public void addBook(Book book) {
+this.books.add(book);
+book.getAuthors().add(this);
+}
+...
+}
+```
+
+The service-method remains the same:
+
+```
+@Transactional
+public void cloneAuthor() {
+Author author = authorRepository.fetchByName("Mark Janel");
+Author authorClone = new Author(author);
+authorClone.setAge(54);
+authorClone.setName("Farell Tliop");
+authorRepository.save(authorClone);
+}
+```
+
+The triggered SQL statements—except the SELECT JOIN FETCH triggered via fetchByName()—for fetching Mark Janel and the associated books are the expected INSERT statements:
+
+```
+INSERT INTO author (age, genre, name)
+VALUES (?, ?, ?)
+Binding: [54, Anthology, Farell Tliop]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding: [001, My Anthology]
+INSERT INTO book (isbn, title)
+VALUES (?, ?)
+Binding: [002, 999 Anthology]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 1]
+INSERT INTO author_book (author_id, book_id)
+VALUES (?, ?)
+Binding: [2, 2]
+```
+
+#### Joining These Cases
+
+You can easily decide between these two cases (cloning the parent and associating the books or cloning the parent and the books) from the service-method by using a boolean argument to reshape the copy-constructor of Author, as shown here:
+
+```
+public Author(Author author, boolean cloneChildren) {
+this.genre = author.getGenre();
+if (!cloneChildren) {
+// associate books
+books.addAll(author.getBooks());
+} else {
+// clone each book
+for (Book book : author.getBooks()) {
+addBook(new Book(book));
+}
+}
+}
+```
+
+### Why and How to Activate Dirty Tracking
+
+Dirty Checking is a Hibernate mechanism dedicated to detecting, at flush time, the managed entities that have been modified since they were loaded in the current Persistence Context. It then fires the corresponding SQL UPDATE statements on behalf of the application (the data access layer). Note that Hibernate scans all managed entities even if only one property of a managed entity has changed.
+
+Prior to Hibernate 5, the Dirty Checking mechanism relies on the Java Reflection API to check every property of every managed entity. From a performance perspective, this approach is “harmless” as long as the number of entities is relatively small. For a large number of managed entities, this approach may cause performance penalties.
+
+Starting with Hibernate 5, the Dirty Checking mechanism relies on the Dirty Tracking mechanism, which is the capability of an entity to track its own attributes’ changes. The Dirty Tracking mechanism results in better performance and its benefits are noticeable,
+
+![image.png](assets/imageyyyui.png)
+
+Generally speaking, Bytecode Enhancement is the process of instrumenting the bytecode of a Java class for certain purposes. Hibernate Bytecode Enhancement is a process that commonly takes place at build-time; therefore, it doesn’t affect the runtime of the application (there is no runtime performance penalty, but of course there will be an overhead during the build-time). However, it can be set to take place at runtime or deploy-time.
+
+You can add Bytecode Enhancement to your application by adding the corresponding Maven or Gradle plug-in (Ant is also supported). Once the Bytecode Enhancement plugin is added, the bytecode of all the entity classes is instrumented. This process is known as instrumention, and it consists of adding to the code a set of instructions needed to serve the chosen configurations (e.g., you need the entity’s code to be instrumented for Dirty Tracking; via this instrumentation, an entity is capable of tracking which of its attributes has changed). At flush time, Hibernate will require each entity to report any changes, rather than relying on state-diff computations. You enable Dirty Tracking via the enableDirtyTracking configuration. Nevertheless, having a thin Persistence Context is still recommended. The hydrated state (entity snapshot) is still saved in the Persistence Context.
+
+To check if Dirty Tracking was activated, simply decompile the source code of an entity class and search for the following code:
+
+@Transient
+private transient DirtyTracker $$_hibernate_tracker;
+
+\$\$\_hibernate\_tracker is used to register the entity modifications. During flushing, Hibernate calls a method named \$\$\_hibernate\_hasDirtyAttributes(). This method returns the dirty properties as a String[].
+
+Or, just check the logs for messages, as shown here:
+
+INFO: Enhancing [com.bookstore.entity.Author] as Entity
+Successfully enhanced class [D:\...\com\bookstore\entity\Author.class
+
+Hibernate Bytecode Enhancement serves three main mechanisms (for each mechanism, Hibernate will push in the bytecode the proper instrumentation instructions):
+
+1. Dirty Tracking (covered in this item): enableDirtyTracking
+2. Attribute lazy initialization : enableLazyInitialization
+3. Association management (automatic sides synchronization in the case of bidirectional associations): enableAssociationManagement
+
+### How to Map a Boolean to a Yes/No
+
+Consider a legacy database that has a table author with the following Data Definition Language (DDL):
+
+
+```
+CREATE TABLE author (
+id bigint(20) NOT NULL AUTO_INCREMENT,
+age int(11) NOT NULL,
+best_selling varchar(3) NOT NULL,
+genre varchar(255) DEFAULT NULL,
+name varchar(255) DEFAULT NULL,
+PRIMARY KEY (id)
+);
+```
+
+Notice the best\_selling column. This column stores two possible values, Yes or No, indicating if the author is a best-selling author or not. Further, let’s assume that this schema cannot be modified (e.g., it’s a legacy and you can’t modify it) and the best\_selling column should be mapped to a Boolean value.
+
+Obviously, declaring the corresponding entity property as Boolean is necessary but not sufficient:
+
+```
+@Entity
+public class Author implements Serializable {
+...
+@NotNull
+private Boolean bestSelling;
+...
+public Boolean isBestSelling() {
+return bestSelling;
+}
+public void setBestSelling(Boolean bestSelling) {
+this.bestSelling = bestSelling;
+}
+}
+```
+
+At this point, Hibernate will attempt to map this Boolean as shown in the following table:
+
+![image.png](assets/imageewew.png)
+
+So, none of these mappings matches VARCHAR(3). An elegant solution consists of writing a custom converter that Hibernate will apply to all CRUD operations. This can be done by implementing the AttributeConverter interface and overriding its two methods:
+
+```
+@Converter(autoApply = true)
+public class BooleanConverter
+implements AttributeConverterboolean, {
+@Override
+public String convertToDatabaseColumn(Boolean attr) {
+return attr == null ? "No" : "Yes";
+}
+@Override
+public Boolean convertToEntityAttribute(String dbData) {
+return !"No".equals(dbData);
+}
+}
+```
+
+The convertToDatabaseColumn() converts from Boolean to String while convertToEntityAttribute() converts from String to Boolean.
+
+This converter is annotated with @Converter(autoApply = true), which means that this converter will be used for all attributes of the converted type (Boolean). To nominate the attributes, simply remove autoApply or set it to false and add @Converter at the attribute-level, as shown here:
+
+@Convert(converter = BooleanConverter.class)
+private Boolean bestSelling;
+
+Notice that AttributeConverter cannot be applied to attributes annotated with @Enumerated.
+
+### The Best Way to Publish Domain Events from Aggregate Roots
+
+Entities managed by Spring repositories are known as aggregate roots. In a Domain Driven Design (DDD), the aggregate roots can publish events or domain events. Starting with the Spring Data Ingalls release, publishing such events by aggregate roots (entities) became much easier.
+
+Spring Data comes with a @DomainEvents annotation that can be used on a method of the aggregate root to make that publication as easy as possible. A method annotated with @DomainEvents is recognized by Spring Data and is automatically invoked whenever an entity is saved using the proper repository.
+
+Moreover, besides the @DomainEvents annotation, Spring Data provides the @AfterDomainEventsPublication annotation to indicate the method that should be automatically called to clear events after publication. In code, this commonly looks as follows:
+
+```
+class MyAggregateRoot {
+@DomainEvents
+Collection
+<object> domainEvents() {
+// return events you want to get published here
+}
+@AfterDomainEventsPublication
+void callbackMethod() {
+// potentially clean up domain events list
+}
+}
+```
+
+</object>
+
+But Spring Data Commons comes with a convenient template base class (AbstractAggregateRoot) that helps register domain events and uses the publication mechanism implied by @DomainEvents and @AfterDomainEventsPublication. The events are registered by calling the AbstractAggregateRoot#registerEvent() method.
+
+Let’s look at a sample application that relies on AbstractAggregateRoot and its registerEvent() method. There are two entities—Book and BookReview—involved in a bidirectional lazy @OneToMany association. A new book review is saved to the database in CHECK status and a CheckReviewEvent is published. This event is responsible for checking the review grammar, content, etc., and for switching the review status from CHECK to ACCEPT or REJECT.
+
+It then propagates the new status in the database. So, this event is registered before saving the book review in CHECK status and is published automatically after you call the BookReviewRepository.save() method. After publication, the event is cleared.
+
+Let’s start with the aggregator root, BookReview:
+
+```
+@Entity
+public class BookReview extends AbstractAggregateRootbookreview
+implements Serializable {
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private String content;
+private String email;
+@Enumerated(EnumType.STRING)
+private ReviewStatus status;
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "book_id")
+private Book book;
+public void registerReviewEvent() {
+registerEvent(new CheckReviewEvent(this));
+}
+// getters, setters, etc omitted for brevity
+}
+```
+
+BookReview extends AbstractAggregateRoot and exposes the registerReviewEvent() method to register domain events via AbstractAggregateRoot#registerEvent(). The registerReviewEvent() method is called to register the event (CheckReviewEvent) before saving a book review:
+
+```
+@Service
+public class BookstoreService {
+private final static String RESPONSE
+= "We will check your review and get back to you with an email
+ASAP :)";
+private final BookRepository bookRepository;
+private final BookReviewRepository bookReviewRepository;
+...
+@Transactional
+public String postReview(BookReview bookReview) {
+Book book = bookRepository.getOne(1L);
+bookReview.setBook(book);
+bookReview.registerReviewEvent();
+bookReviewRepository.save(bookReview);
+return RESPONSE;
+}
+}
+```
+
+After the save() method is called and the transaction commits, the event is published. The CheckReviewEvent is listed here (it passes the bookReview instance, but you can pass only the needed properties as well by writing the proper constructor):
+
+```
+public class CheckReviewEvent {
+private final BookReview bookReview;
+public CheckReviewEvent(BookReview bookReview) {
+this.bookReview = bookReview;
+}
+public BookReview getBookReview() {
+return bookReview;
+}
+}
+```
+
+Finally, you need the event handler, which is implemented as follows:
