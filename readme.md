@@ -3367,7 +3367,6 @@ Hibernate Bytecode Enhancement serves three main mechanisms (for each mechanism,
 
 Consider a legacy database that has a table author with the following Data Definition Language (DDL):
 
-
 ```
 CREATE TABLE author (
 id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -3519,3 +3518,319 @@ return bookReview;
 ```
 
 Finally, you need the event handler, which is implemented as follows:
+
+## Fetching
+
+### How to use Direct fetching
+
+Direct fetching or fetching by ID is the preferable way to fetch an entity when its identifier is known and its lazy associations will not be navigated in the current Persistence Context.
+
+By default, direct fetching will load the entity according to the default or specified FetchType. It’s important to keep in mind that, by default, the JPA @OneToMany and @ManyToMany associations are considered LAZY, while the @OneToOne and @ManyToOne associations are considered EAGER.
+
+So, fetching an entity by ID that has an EAGER association will load that association in the Persistence Context even if is not needed, and this causes performance penalties. On the other hand, fetching an entity that has a LAZY association and accessing this association in the current Persistence Context will cause extra queries for loading it as well—also leading to performance penalties.
+
+The best approach is to keep all the associations LAZY and rely on manual fetching strategy  to load these associations. Rely on direct fetching only if you don’t plan to access the LAZY associations in the current Persistence Context.
+
+Now, let’s look at several approaches for fetching an entity by ID. Consider the following Author entity:
+
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+
+The purpose of the following three examples is to use direct fetching to load the entity with an ID of 1.
+
+#### Direct Fetching via Spring Data
+
+You can do direct fetching in Spring Data via the built-in findById() method. This method gets as argument the ID and returns an Optional that wraps the corresponding entity. In code, findById() is used as follows:
+
+@Repository
+public interface AuthorRepository extends JpaRepository<Author, Long> {}
+Optional<Author> author = authorRepository.findById(1L);
+
+The SQL SELECT statement that loads this Author is:
+
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+
+Behind the scenes, findById() uses the EntityManager.find()
+method.
+
+#### Fetching via EntityManager
+
+You can inject the EntityManager via @PersistenceContext. Having the EntityManager in your hands, the rest is just about calling the find() method. This method follows Spring Data style and returns an Optional:
+
+@PersistenceContext
+
+private EntityManager entityManager;
+
+@Override
+public Optional<T> find(Class<T> clazz, ID id) {
+if (id == null) {
+throw new IllegalArgumentException("ID cannot be null");
+}
+return Optional.ofNullable(entityManager.find(clazz, id));
+}
+
+The SQL SELECT statement that loads this Author is the same as with findById():
+
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+
+#### Fetching via Hibernate-Specific Session
+
+To fetch by ID using the Hibernate-specific Session.get() method, you need to unwrap the Session from EntityManager. The following method performs this unwrap and returns an Optional:
+
+@PersistenceContext
+private EntityManager entityManager;
+@Override
+public Optional<T> findViaSession(Class<T> clazz, ID id) {
+if (id == null) {
+throw new IllegalArgumentException("ID cannot be null");
+}
+Session session = entityManager.unwrap(Session.class);
+return Optional.ofNullable(session.get(clazz, id));
+}
+
+The SQL SELECT statement that loads this Author is the same as in the case of findById() and EntityManager:
+
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+
+The JPA persistence provider (Hibernate) fetches the entity with the given ID via findById(), find(), and get(), by searching it in this order:
+
+1. The current Persistence Context (if it’s not found, go to the next step)
+2. The Second Level Cache (if it’s not found, go to the next step)
+3. The database
+
+### Direct Fetching and Session-Level Repeatable-Reads
+
+This section expands on the first bullet (searching in the current Persistence Context). Why does Hibernate check the Persistence Context first to find the entity with the given ID? The answer is that Hibernate guarantees session-level repeatable reads. This means that the entity fetched the first time is cached in the Persistence Context (the First Level Cache). Subsequent fetches of the same entity (via direct fetching or explicit entity query (JPQL/HQL)) are done from the Persistence Context.
+
+In other words, session-level repeatable reads prevent lost updates in concurrent writes cases.
+
+Check out the following example, which groups these three direct fetching techniques under a transactional service-method:
+
+```
+@Transactional(readOnly=true)
+public void directFetching() {
+// direct fetching via Spring Data
+Optionalauthor resultSD = authorRepository.findById(1L);
+System.out.println("Direct fetching via Spring Data: "resultSD.get());
+// direct fetching via EntityManager
+Optionalauthor resultEM = dao.find(Author.class, 1L);
+System.out.println("Direct fetching via EntityManager: "resultEM.get());
+// direct fetching via Session
+Optionalauthor resultHS = dao.findViaSession(Author.class, 1L);
+System.out.println("Direct fetching via Session: "resultHS.get());
+}
+```
+
+How many SELECT statements will be executed? If you answered one, you are right! There is a single SELECT caused by the authorRepository.findById(1L) call. The returned author is cached in the Persistence Context. The subsequent calls—dao.find(Author. class, 1L) and dao.findViaSession(Author.class, 1L)—fetch the same author instance from the Persistence Context without hitting the underlying database.
+
+Now, let’s assume that we use explicit JPQL queries, as in the following example. First, we write the explicit JPQL that fetches an author by ID (we use Optional just to maintain the trend, but it’s not relevant for this topic):
+
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+@Query("SELECT a FROM Author a WHERE a.id = ?1")
+public Optional<Author> fetchById(long id);
+}
+
+Next, let’s look at the following service-method
+
+```
+@Transactional(readOnly=true)
+public void directFetching() {
+// direct fetching via Spring Data
+Optionalauthor resultSD = authorRepository.findById(1L);
+System.out.println("Direct fetching via Spring Data: "resultSD.get());
+// direct fetching via EntityManager
+Optionalauthor resultJPQL = authorRepository.fetchById(1L);
+System.out.println("Explicit JPQL: "resultJPQL.get());
+}
+```
+
+The first SELECT is caused by the authorRepository.findById(1L) call, when the Persistence Context is empty. The second SELECT hits the database because, unless we use the Second Level Cache, any explicit query will be executed against the database.
+
+Therefore, our explicit SELECT is not an exception to this rule. The author returned as the result of calling authorRepository.fetchById(1L) is the one from the current loaded database snapshot or is the author from the Persistence Context that was loaded when we called authorRepository.findById(1L)? Since the Persistence Context guarantees session-level repeatable-reads, Hibernate ignores the database snapshot loaded via our JPQL and returns the author that already exists in the Persistence Context.
+
+From a performance perspective, it is advisable to use findById(), find(), or get() instead of an explicit JPQL/SQL to fetch an entity by ID. That way, if the entity is present in the current Persistence Context, there is no SELECT triggered against the database and no data snapshot to be ignored.
+
+While, at first glance, this behavior may not be that obvious, we can reveal it via a simple test using two concurrent transactions shaped via the Spring TransactionTemplate API. Consider the following author:
+
+INSERT INTO author (age, name, genre, id)  VALUES (23, "Mark Janel", "Anthology", 1);
+
+```
+private final AuthorRepository authorRepository;
+private final TransactionTemplate template;public void process() {
+template.setPropagationBehavior(
+TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+template.setIsolationLevel(Isolation.READ_COMMITTED.value());
+// Transaction A
+template.execute(new TransactionCallbackWithoutResult() {
+@Override
+protected void doInTransactionWithoutResult(
+TransactionStatus status) {
+Author authorA1 = authorRepository.findById(1L).orElseThrow();
+System.out.println("Author A1: " + authorA1.getName() + "\n");
+// Transaction B
+template.execute(new TransactionCallbackWithoutResult() {
+@Override
+protected void doInTransactionWithoutResult(
+TransactionStatus status) {
+Author authorB = authorRepository
+.findById(1L).orElseThrow();
+authorB.setName("Alicia Tom");
+System.out.println("Author B: "authorB.getName() + "\n");
+}
+});
+// Direct fetching via findById(), find() and get()
+// doesn't trigger a SELECT
+// It loads the author directly from Persistence Context
+Author authorA2 = authorRepository.findById(1L).orElseThrow();
+Chapter 3 Fetching
+143
+System.out.println("\nAuthor A2: " + authorA2.getName() + "\n");
+// JPQL entity queries take advantage of
+// session-level repeatable reads
+// The data snapshot returned by the triggered SELECT is ignored
+Author authorViaJpql = authorRepository.fetchByIdJpql(1L);
+System.out.println("Author via JPQL: "authorViaJpql.getName() + "\n");
+// SQL entity queries take advantage of
+// session-level repeatable reads
+// The data snapshot returned by the triggered SELECT is ignored
+Author authorViaSql = authorRepository.fetchByIdSql(1L);
+System.out.println("Author via SQL: "authorViaSql.getName() + "\n");
+// JPQL query projections always load the latest database state
+String nameViaJpql = authorRepository.fetchNameByIdJpql(1L);
+System.out.println("Author name via JPQL: " + nameViaJpql + "\n");
+// SQL query projections always load the latest database state
+String nameViaSql = authorRepository.fetchNameByIdSql(1L);
+System.out.println("Author name via SQL: " + nameViaSql + "\n");
+}
+});
+}
+```
+
+There is a lot of code but it’s pretty simple. First of all, we run this code against MySQL, which relies on REPEATABLE\_READ as the default isolation level
+
+We need to switch to the READ\_COMMITTED isolation level in order to highlight how the Hibernate session-level repeatable reads work without interleaving the REPEATABLE\_READ isolation level. We also ensure that the second transaction (Transaction B) doesn’t participate in the context of Transaction A by setting PROPAGATION\_REQUIRES\_NEW
+
+Further, we start Transaction A (and Persistence Context A). In this transaction context, we call findById() to fetch the author with an ID of 1. So, this author is loaded in the Persistence Context A via the proper SELECT query.
+
+Next, we leave Transaction A as it is and start Transaction B (and Persistence Context B). In Transaction B context, we load the author with an ID of 1 via the proper SELECT and perform an update of the name (Mark Janel becomes Alicia Tom). The corresponding UPDATE is executed against the database at flush time, right before Transaction B commits. So now, in the underlying database, the author with an ID of 1 has the name Alicia Tom
+
+Now, we come back to Transaction A (and Persistence Context A) and trigger a succession of queries, as follows:
+
+First, we call findById() to fetch the author with an ID of 1. The author is returned directly from Persistence Context A (without any SELECT) and the name is Mark Janel. Therefore, the session-level repeatable reads work as expected
+
+Second, we execute the following explicit JPQL query (fetchByIdJpql()):
+
+@Query("SELECT a FROM Author a WHERE a.id = ?1")
+public Author fetchByIdJpql(long id);
+
+The data snapshot returned by the triggered SELECT is ignored and the returned author is the one from Persistence Context A (Mark Janel). Again, the session-level repeatable reads work as expected.
+
+Next, we execute the following explicit native SQL query (fetchByIdSql()):
+
+@Query(value = "SELECT * FROM author WHERE id = ?1",
+nativeQuery = true)
+public Author fetchByIdSql(long id);
+
+Again, the data snapshot returned by the triggered SELECT is ignored and the returned author is the one from Persistence Context A (Mark Janel). The session-level repeatable reads work as expected.
+
+So far, we can conclude that the Hibernate session-level repeatable reads work as expected for entity queries expressed via JPQL or native SQL. Next, let’s see how this works with SQL query projections (SQL query projections involve selecting specific columns from a table to retrieve only the necessary information).
+
+We execute the following JPQL query projection (fetchNameByIdJpql()):
+
+@Query("SELECT a.name FROM Author a WHERE a.id = ?1")
+public String fetchNameByIdJpql(long id);
+
+This time, the data snapshot returned by the triggered SELECT is not ignored. The returned author has the name Alicia Tom. Therefore, the session-level repeatable reads didn’t work in this case.
+
+Finally, we execute the following native SQL query projection (fetchNameByIdSql()):
+
+@Query(value = "SELECT name FROM author WHERE id = ?1",
+nativeQuery = true)
+public String fetchNameByIdSql(long id);
+
+Again, the data snapshot returned by the triggered SELECT is not ignored. The returned author has the name Alicia Tom. Therefore, the session-level repeatable reads didn’t work.
+
+So far, we can conclude that Hibernate session-level repeatable reads don’t work for SQL query projections expressed via JPQL or as native SQL. These kinds of queries always load the latest database state.
+
+Nevertheless, if we switch the transaction isolation level back to REPEATABLE\_READ then SQL query projection will return the author Mark Janel. This is happening because, as the name suggests, the REPEATABLE\_READ isolation level states that a transaction reads the same result across multiple reads. In other words, the REPEATABLE\_READ isolation level prevents the SQL non-repeatable reads anomaly. For example, a transaction that reads one record from the database multiple times obtains the same result at each read.
+
+Do not confuse Hibernate session-level repeatable reads with the REPEATABLE\_READ transaction isolation level.
+
+Hibernate provides session-level repeatable reads out-of-the-box. But sometimes you’ll want to load the latest state from the database. In such cases, you can call the EntityManager#refresh() method (since Spring Data doesn’t expose this method, you can extend the JpaRepository to add it).
+
+Do not confuse Hibernate session-level repeatable reads with applicationlevel repeatable reads, which are commonly employed when the conversation spans over multiple requests
+
+Hibernate guarantees session-level repeatable reads and offers support for application-level repeatable reads. More precisely, the Persistence Context guarantees session-level repeatable reads and you can shape application-level repeatable reads via detached entities or the Extended Persistence Context. Application-level repeatable reads should receive the help of an application-level concurrency control strategy such as Optimistic Locking in order to avoid lost updates.
+
+#### Direct Fetching Multiple Entities by ID
+
+Sometimes you’ll need to load more than one entity by ID. In such cases, the quickest approach to loading the entities by ID will rely on a query that uses the IN operator.
+
+Spring Data provides out-of-the-box the findAllById() method. It takes as argument an Iterable of the IDs and returns a List of entities
+
+List books = bookRepository.findAllById(List.of(1L, 2L, 5L));
+
+The same result (the same triggered SQL) can be obtained via JPQL as follows:
+
+@Query("SELECT b FROM Book b WHERE b.id IN ?1")
+List<Book> fetchByMultipleIds(List<Long> ids);
+
+Using the IN clause in combination with a database that supports Execution Plan Cache can be further optimized
+
+Using Specification is also an option. Check out the following example:
+
+List books = bookRepository.findAll(  new InIdsSpecification(List.of(1L, 2L, 5L)));
+
+Where InIdsSpecification is:
+
+
+
+```
+public class InIdsSpecification implements Specificationbook {
+private final Listlong ids;
+public InIdsSpecification(Listlong ids) {
+this.ids = ids;
+}
+@Override
+public Predicate toPredicate(Rootbook root,
+CriteriaQuery? cquery, CriteriaBuilder cbuilder) {
+return root.in(ids);
+// or
+// Expressionstring expression = root.get("id");
+// return expression.in(ids);
+}
+}
+```
+
+All three of these approaches trigger the same SQL SELECT and benefit from session-level repeatable reads.
+
+Another approach is to rely on the Hibernate-specific MultiIdentifierLoadAccess interface. Among its advantages, this interface allows you to load multiple entities by ID in batches (withBatchSize()) and to specify if the Persistence Context should be inspected or not before executing the database query (by default it’s not inspected but this can be enabled via enableSessionCheck()). Since MultiIdentifierLoadAccess is a Hibernate-specific API, we need to shape it in Spring Boot style
