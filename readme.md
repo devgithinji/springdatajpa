@@ -3533,6 +3533,7 @@ The best approach is to keep all the associations LAZY and rely on manual fetchi
 
 Now, let’s look at several approaches for fetching an entity by ID. Consider the following Author entity:
 
+```
 @Entity
 public class Author implements Serializable {
 private static final long serialVersionUID = 1L;
@@ -3544,6 +3545,7 @@ private String name;
 private String genre;
 // getters and setters omitted for brevity
 }
+```
 
 The purpose of the following three examples is to use direct fetching to load the entity with an ID of 1.
 
@@ -3551,12 +3553,15 @@ The purpose of the following three examples is to use direct fetching to load th
 
 You can do direct fetching in Spring Data via the built-in findById() method. This method gets as argument the ID and returns an Optional that wraps the corresponding entity. In code, findById() is used as follows:
 
+```
 @Repository
-public interface AuthorRepository extends JpaRepository<Author, Long> {}
-Optional<Author> author = authorRepository.findById(1L);
+public interface AuthorRepository extends JpaRepositoryauthor, {}
+Optionalauthor author = authorRepository.findById(1L);
+```
 
 The SQL SELECT statement that loads this Author is:
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 author0_.age AS age2_0_0_,
@@ -3564,6 +3569,7 @@ author0_.genre AS genre3_0_0_,
 author0_.name AS name4_0_0_
 FROM author author0_
 WHERE author0_.id = ?
+```
 
 Behind the scenes, findById() uses the EntityManager.find()
 method.
@@ -3572,20 +3578,23 @@ method.
 
 You can inject the EntityManager via @PersistenceContext. Having the EntityManager in your hands, the rest is just about calling the find() method. This method follows Spring Data style and returns an Optional:
 
-@PersistenceContext
+```
+@PersistenceContextprivate EntityManager entityManager;
+```
 
-private EntityManager entityManager;
-
+```
 @Override
-public Optional<T> find(Class<T> clazz, ID id) {
+public Optionalt find(Classt clazz, ID id) {
 if (id == null) {
 throw new IllegalArgumentException("ID cannot be null");
 }
 return Optional.ofNullable(entityManager.find(clazz, id));
 }
+```
 
 The SQL SELECT statement that loads this Author is the same as with findById():
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 author0_.age AS age2_0_0_,
@@ -3593,24 +3602,28 @@ author0_.genre AS genre3_0_0_,
 author0_.name AS name4_0_0_
 FROM author author0_
 WHERE author0_.id = ?
+```
 
 #### Fetching via Hibernate-Specific Session
 
 To fetch by ID using the Hibernate-specific Session.get() method, you need to unwrap the Session from EntityManager. The following method performs this unwrap and returns an Optional:
 
+```
 @PersistenceContext
 private EntityManager entityManager;
 @Override
-public Optional<T> findViaSession(Class<T> clazz, ID id) {
+public Optionalt findViaSession(Classt clazz, ID id) {
 if (id == null) {
 throw new IllegalArgumentException("ID cannot be null");
 }
 Session session = entityManager.unwrap(Session.class);
 return Optional.ofNullable(session.get(clazz, id));
 }
+```
 
 The SQL SELECT statement that loads this Author is the same as in the case of findById() and EntityManager:
 
+```
 SELECT
 author0_.id AS id1_0_0_,
 author0_.age AS age2_0_0_,
@@ -3618,6 +3631,7 @@ author0_.genre AS genre3_0_0_,
 author0_.name AS name4_0_0_
 FROM author author0_
 WHERE author0_.id = ?
+```
 
 The JPA persistence provider (Hibernate) fetches the entity with the given ID via findById(), find(), and get(), by searching it in this order:
 
@@ -3749,16 +3763,20 @@ First, we call findById() to fetch the author with an ID of 1. The author is ret
 
 Second, we execute the following explicit JPQL query (fetchByIdJpql()):
 
+```
 @Query("SELECT a FROM Author a WHERE a.id = ?1")
 public Author fetchByIdJpql(long id);
+```
 
 The data snapshot returned by the triggered SELECT is ignored and the returned author is the one from Persistence Context A (Mark Janel). Again, the session-level repeatable reads work as expected.
 
 Next, we execute the following explicit native SQL query (fetchByIdSql()):
 
+```
 @Query(value = "SELECT * FROM author WHERE id = ?1",
 nativeQuery = true)
 public Author fetchByIdSql(long id);
+```
 
 Again, the data snapshot returned by the triggered SELECT is ignored and the returned author is the one from Persistence Context A (Mark Janel). The session-level repeatable reads work as expected.
 
@@ -3766,16 +3784,20 @@ So far, we can conclude that the Hibernate session-level repeatable reads work a
 
 We execute the following JPQL query projection (fetchNameByIdJpql()):
 
+```
 @Query("SELECT a.name FROM Author a WHERE a.id = ?1")
 public String fetchNameByIdJpql(long id);
+```
 
 This time, the data snapshot returned by the triggered SELECT is not ignored. The returned author has the name Alicia Tom. Therefore, the session-level repeatable reads didn’t work in this case.
 
 Finally, we execute the following native SQL query projection (fetchNameByIdSql()):
 
+```
 @Query(value = "SELECT name FROM author WHERE id = ?1",
 nativeQuery = true)
 public String fetchNameByIdSql(long id);
+```
 
 Again, the data snapshot returned by the triggered SELECT is not ignored. The returned author has the name Alicia Tom. Therefore, the session-level repeatable reads didn’t work.
 
@@ -3797,12 +3819,16 @@ Sometimes you’ll need to load more than one entity by ID. In such cases, the q
 
 Spring Data provides out-of-the-box the findAllById() method. It takes as argument an Iterable of the IDs and returns a List of entities
 
+```
 List books = bookRepository.findAllById(List.of(1L, 2L, 5L));
+```
 
 The same result (the same triggered SQL) can be obtained via JPQL as follows:
 
+```
 @Query("SELECT b FROM Book b WHERE b.id IN ?1")
-List<Book> fetchByMultipleIds(List<Long> ids);
+Listbook fetchByMultipleIds(Listlong ids);
+```
 
 Using the IN clause in combination with a database that supports Execution Plan Cache can be further optimized
 
@@ -3837,16 +3863,17 @@ Another approach is to rely on the Hibernate-specific MultiIdentifierLoadAccess 
 
 Consider the Author entity that shapes an author profile via several properties as id, name, age, and genre. The scenario requires you to load an Author profile, edit the profile (e.g., modify the age), and save it back in the database. You don’t do this in a single transaction (Persistence Context). You do it in two different transactions, as follows.
 
-
 #### Load Author in Read-Write Mode
 
 Since the Author entity should be modified, you may think that it should be loaded in read-write mode as follows:
 
+```
 @Transactional
 public Author fetchAuthorReadWriteMode() {
 Author author = authorRepository.findByName("Joana Nimar");
 return author;
 }
+```
 
 Note that the fetched author is not modified in the method (transaction). It is fetched and returned, so the current Persistence Context is closed before any modifications and the returned author is detached. Let’s see what do we have in the Persistence Context.
 
@@ -3869,17 +3896,17 @@ Notice the highlighted content. The status of the entity is MANAGED and the hydr
 
 The performance penalties are reflected in memory and CPU. Storing the unneeded hydrated state consumes memory, while scanning the entity at flush time and collecting it by the Garbage Collector consumes CPU resources. It will be better to avoid these drawbacks by fetching the entity in read-only mode
 
-
 #### Load Author in Read-Only Mode
 
 Since the Author entity is not modified in the current Persistence Context, it can be loaded in read-only mode as follows:
 
+```
 @Transactional(readOnly = true)
 public Author fetchAuthorReadOnlyMode() {
 Author author = authorRepository.findByName("Joana Nimar");
 return author;
 }
-
+```
 
 The entity loaded by this method (transaction) is a read-only entity. Do not confuse read-only entities with DTO (projections). A read-only entity is meant to be modified only so the modifications will be propagated to the database in a future Persistence Context. A DTO (projection) is never loaded in the Persistence Context and is suitable for data that will never be modified
 
@@ -3899,19 +3926,348 @@ This time the status is READ\_ONLY and the hydrated state was discarded. Moreove
 
 After fetching and returning the entity (in read-write or read-only mode) it becomes detached. Further, we can modify it and merge it:
 
+```
 // modify the read-only entity in detached state
 Author authorRO = bookstoreService.fetchAuthorReadOnlyMode();
 authorRO.setAge(authorRO.getAge() + 1);
-bookstoreService.updateAuthor(authorRO);
-
-
-// merge the entity
+bookstoreService.updateAuthor(authorRO);// merge the entity
 @Transactional
 public void updateAuthor(Author author) {
 // behind the scene it calls EntityManager#merge()
 authorRepository.save(author);
 }
+```
 
 The author is not the current Persistence Context and this is a merge operation. Therefore, this action is materialized in a SELECT and an UPDATE. Further, the merged entity is managed by Hibernate
 
 The scenario presented in this item is commonly encountered in web applications and is known as a HTTP long conversation. Commonly, in a web application, this kind of scenario requires two or more HTTP requests. Particularly in this case, the first request will load the author profile, while the second request pushes the profile changes.
+
+### How to Lazy Load the Entity Attributes via Hibernate Bytecode Enhancement
+
+Assume that the application contains the following Author entity. This entity maps an author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+@Lob
+private byte[] avatar;
+private int age;
+private String name;
+private String genre;
+...
+// getters and setters omitted for brevity
+}
+```
+
+#### enabling Lazy Loading of Attributes
+
+Attributes such as the entity identifier (id), name, age, or genre are to be fetched eagerly on every entity load. But the avatar should be fetched lazily, only when it’s being accessed by the application code. So, the avatar column shouldn’t be present in the SQL triggered to fetch an Author.
+
+By default, the attributes of an entity are loaded eagerly (all at once, in the same query), so avatar will be loaded even if it is not needed/required by the application. The avatar represents a picture; therefore, it’s a potential large amount of byte data
+
+Loading the avatar on every entity load without using it is a performance penalty that should be eliminated.
+
+A solution to this problem relies on attributes lazy loading.
+
+Attributes lazy loading is useful for column types that store large amounts of data—CLOB, BLOB, VARBINARY, etc.—or for details that should be loaded on demand.
+
+To employ attributes lazy loading, you need to follow some steps. The first step is to add Hibernate Bytecode Enhancement plug-in for Maven. Next, you instruct Hibernate to instrument the entity classes’ bytecode with the proper instructions by enabling lazy initialization via the enableLazyInitialization configuration
+
+For Maven, add pom.xml to the Bytecode Enhancement plug-in in the  section, as shown here:
+
+![image.png](assets/imageadsafd.png)
+
+Hibernate Bytecode Enhancement takes place at build-time; therefore, it doesn’t add overhead to runtime. Without adding Bytecode Enhancement as shown here, the attribute lazy loading will not work.
+
+The second step consists of annotating the entity attributes that should be loaded lazy with @Basic(fetch = FetchType.LAZY). For the Author entity, annotate the avatar attribute as follows:
+
+```
+@Lob
+@Basic(fetch = FetchType.LAZY)
+private byte[] avatar;
+```
+
+By default, the attributes are annotated with @Basic, which relies on the default fetch policy. The default fetch policy is FetchType.EAGER.
+
+Further, a classical Spring repository for the Author entity can be written. Eventually, just for fun, add a query to fetch all authors older than or equal to the given age:
+
+```
+@Repository
+public interface AuthorRepository extends JpaRepositoryauthor, {
+@Transactional(readOnly=true)
+Listauthor findByAgeGreaterThanEqual(int age);
+}
+```
+
+The following service-method will load all authors older than the given age. The avatar attribute will not be loaded:
+
+```
+public Listauthor fetchAuthorsByAgeGreaterThanEqual(int age) {
+Listauthor authors = authorRepository.findByAgeGreaterThanEqual(age);
+return authors;
+}
+```
+
+Calling this method will reveal an SQL that fetches only id, name, age, and genre:
+
+```
+SELECT
+author0_.id AS id1_0_,
+author0_.age AS age2_0_,
+author0_.genre AS genre4_0_,
+author0_.name AS name5_0_
+FROM author author0_
+WHERE author0_.age >= ?
+```
+
+Picking up an author id from the returned list of authors and passing it to the following method will fetch the avatar attribute as well. The explicit call of the getAvatar() method will trigger a secondary SQL meant to load the avatar’s bytes:
+
+```
+@Transactional(readOnly = true)
+public byte[] fetchAuthorAvatarViaId(long id) {
+Author author = authorRepository.findById(id).orElseThrow();
+return author.getAvatar(); // lazy loading of 'avatar'
+}
+```
+
+Fetching the author with the given id is accomplished in two SELECT statements. The first SELECT fetches the id, age, name, and genre, while the second SELECT fetches the avatar:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre4_0_0_,
+author0_.name AS name5_0_0_
+FROM author author0_
+WHERE author0_.id = ?SELECT
+author_.avatar AS avatar3_0_
+FROM author author_
+WHERE author_.id = ?
+```
+
+Trying to fetch the lazy attributes (e.g., avatar) outside the context of a session (outside a Persistence Context) will cause a LazyInitializationException.
+
+### Attribute Lazy Loading and N+1
+
+The N+1 represents a performance penalty caused by triggering more SQL statements (queries) than needed/expected. In other words, performing more database round trips than necessary consumes resources such as CPU, RAM memory, database connections, Chapter 3 Fetching 156 etc. Most of the time, N+1 remains undetected until you are inspecting (counting/ asserting) the number of triggered SQL statements.
+
+The more additional and unnecessary SQL statements you have, the slower the application will get.
+
+Consider the following method:
+
+```
+@Transactional(readOnly = true)
+public Listauthor fetchAuthorsDetailsByAgeGreaterThanEqual(int age) {
+Listauthor authors = authorRepository.findByAgeGreaterThanEqual(age);
+// don't do this since this is a N+1 case
+authors.forEach(a -> {
+a.getAvatar();
+});
+return authors;
+}
+```
+
+The query triggered by calling findByAgeGreaterThanEqual() fetches a list of authors older than the given age (this is the 1 from N+1). Looping the list of authors and calling getAvatar() for each author leads to a number of additional queries equal to the number of authors. In other words, since the avatar is fetched lazily, calling getAvatar() will trigger an SQL SELECT for each author (this is the N from N+1). For two authors, we have the following three SQL statements
+
+```
+SELECT
+author0_.id AS id1_0_,
+author0_.age AS age2_0_,
+author0_.genre AS genre4_0_,
+author0_.name AS name5_0_
+FROM author author0_
+WHERE author0_.age >= ?SELECT
+author_.avatar AS avatar3_0_
+FROM author author_
+WHERE author_.id = ?SELECT
+author_.avatar AS avatar3_0_
+FROM author author_
+WHERE author_.id = ?
+```
+
+You can avoid N+1 performance penalties by employing the subentities technique (see Item 24) or by triggering an SQL SELECT that explicitly loads the lazy fetched attributes in a DTO. For example, the following query will trigger a single SELECT to fetch the names and avatars of authors older than the given age as a DTO (Spring projection):
+
+```
+public interface AuthorDto {
+public String getName();
+public byte[] getAvatar();
+}
+@Transactional(readOnly = true)
+@Query("SELECT a.name AS name, a.avatar AS avatar
+FROM Author a WHERE a.age >= ?1")
+Listauthordto findDtoByAgeGreaterThanEqual(int age);
+```
+
+### Attribute Lazy Loading and Lazy Initialization Exceptions
+
+Enabling attributes lazy loading in a Spring Boot application will eventually lead to lazy initialization exceptions that are specific to this context. Commonly, this happens when the developer disables Open Session in View (which is enabled by default in Spring Boot).
+
+By default, Open Session in View forces the current Persistence Context to remain open, while Jackson forces initialization of lazy loaded attributes (generally speaking, the View layer triggers the proxy initialization). For example, if Open Session in View is enabled, and the application returns a List from a REST controller endpoint, the View (Jackson serializes the JSON response) will force the initialization of the avatar attribute as well. OSIV will supply the current active Session, so no lazy initialization issues will occur
+
+Obviously, this is against the application’s goal. The solution consists of disabling OSIV by setting the following in application.properties:
+
+```
+spring.jpa.open-in-view=false
+```
+
+But this leads to an exception. This time, when Jackson tries to serialize the List to JSON (this is the data received by the client of the application via a controller endpoint), there will be no active Session available.
+
+Most probably, the exception is as follows:
+
+Could not write JSON: Unable to perform requested lazy initialization [com. bookstore.entity.Author.avatar] - no session and settings disallow loading outside the Session;
+
+So, Jackson forces the initialization of lazy loaded attributes without being in a Hibernate session, and this causes a lazy initialization exception. On the other hand, there is nothing wrong with not having an active Hibernate session at this point.
+
+There are at least two ways to fix this issue and still take advantage of attributes lazy loading
+
+**Setting Explicit Default Values for Lazy Loaded Attributes**
+
+A quick approach consists of explicitly setting default values for lazy loaded attributes. If Jackson sees that the lazy loaded attributes have been initialized with values, then it will not attempt to initialize them. Consider the following method:
+
+```
+@Transactional(readOnly = true)
+public Author fetchAuthor(long id) {
+Author author = authorRepository.findById(id).orElseThrow();
+if (author.getAge() < 40) {
+author.getAvatar();
+} else {
+author.setAvatar(null);
+}
+return author;
+}
+```
+
+The method fetches an author by id, and, if the fetched author is younger than 40, it loads the avatar via a secondary query. Otherwise, the avatar attribute is initialized with null. This time, Jackson serialization doesn’t cause any problems, but the JSON received by the client may be as follows:
+
+```
+{
+"id": 1,
+"avatar": null,
+"age": 43,
+"name": "Martin Ticher",
+"genre": "Horror"
+}
+```
+
+Now, depending on the implemented feature, you may want to serialize the avatar as null or instruct Jackson not to serialize the attributes that have default values (e.g., null in the case of objects, 0 in the case of primitive integers, etc.).
+
+Most commonly, the application should avoid the serialization of avatar; therefore, setting @JsonInclude(Include.NON\_DEFAULT) is the setting needed at entity-level. In the presence of this setting, Jackson will skip the serialization of any attribute having a Chapter 3 Fetching 160 default value (depending on your case, other values of Include can be used as well, such as Include.NON\_EMPTY):
+
+```
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+...
+@Entity
+@JsonInclude(Include.NON_DEFAULT)
+public class Author implements Serializable {
+...
+}
+```
+
+This time, the resulting JSON doesn’t contain the avatar:
+
+```
+{
+"id": 1,
+"age": 43,
+"name": "Martin Ticher",
+"genre": "Horror"
+}
+```
+
+Setting explicit default values for lazy loaded attributes keeps the View from triggering the lazy loading of them. From this angle, it doesn’t matter if OSIV is enabled or disabled since the Session will not be used. However, the Session is still open and consumes resources, so it is advisable to disable OSIV.
+
+#### Providing a Custom Jackson Filter
+
+Alternatively, Jackson can be informed via a custom filter about what should be serialized and what not. In this case, Jackson should serialize id, age, name, and genre, and not serialize avatar.
+
+Assume the following service-method, which simply fetches the authors older than the given age without their avatars:
+
+```
+public Listauthor fetchAuthorsByAgeGreaterThanEqual(int age) {
+Listauthor authors = authorRepository.findByAgeGreaterThanEqual(age);
+return authors;
+}
+```
+
+There are several approaches for writing and configuring Jackson’s filters. One approach starts by annotating the entity with @JsonFilter as follows (the text between quotes acts as an identifier of this filter used for referencing it later):
+
+```
+@Entity
+@JsonFilter("AuthorId")
+public class Author implements Serializable {
+...
+}
+```
+
+The filter identified via AuthorId is implemented in the BookstoreController, as follows (the important part was highlighted; notice the list of attributes that should be serialized passed to the filterOutAllExcept() method):
+
+```
+@Controller
+public class BookstoreController {
+private final SimpleFilterProvider filterProvider;
+private final BookstoreService bookstoreService;
+public BookstoreController(BookstoreService bookstoreService) {
+this.bookstoreService = bookstoreService;
+filterProvider = new SimpleFilterProvider().addFilter("AuthorId",
+SimpleBeanPropertyFilter.filterOutAllExcept(
+"id", "name", "age", "genre"));
+filterProvider.setFailOnUnknownId(false);
+}
+...
+}
+```
+
+The filter is used in the REST endpoint as follows:
+
+```
+@GetMapping("/authors/{age}")
+public MappingJacksonValue fetchAuthorsByAgeGreaterThanEqual(
+@PathVariable int age) throws JsonProcessingException {
+Listauthor authors = bookstoreService.
+fetchAuthorsByAgeGreaterThanEqual(age);
+MappingJacksonValue wrapper = new MappingJacksonValue(authors);
+wrapper.setFilters(filterProvider);
+return wrapper;
+}
+```
+
+The returned MappingJacksonValue can be serialized as shown in the following JSON:
+
+```
+{
+"id": 1,
+"age": 43,
+"name": "Martin Ticher",
+"genre": "Horror"
+}
+```
+
+This looks good, but the application must also cover the case when the avatar attribute was fetched. Otherwise, Jackson will throw an exception of type, Cannot resolve PropertyFilter with id 'AuthorId'. When the avatar is fetched, it should be serialized as well. Therefore, the filter should serialize all the attributes. Being the default behavior, the filter can be configured globally (at the application-level) to be used for serializing all attributes of the Author entity:
+
+```
+@Configuration
+public class WebConfig extends WebMvcConfigurationSupport {
+@Override
+protected void extendMessageConverters(
+Listhttpmessageconverter<?> converters) {
+for(HttpMessageConverter? converter: converters) {
+if(converter instanceof MappingJackson2HttpMessageConverter) {
+ObjectMapper mapper = ((MappingJackson2HttpMessageConverter)
+converter).getObjectMapper();
+mapper.setFilterProvider(
+new SimpleFilterProvider().addFilter("AuthorId",
+SimpleBeanPropertyFilter.serializeAll()));
+}
+}
+}
+```
+
+}
+
+A REST endpoint that will return a List will rely on this filter that serializes all attributes of Author, including avatar
+
+Jackson has an add-on module for the JSON processor, which handles Hibernate data types and specifically aspects of lazy-loading. This module is identified by the artifact id, jackson-datatype-hibernate5. Unfortunately, so far, this module doesn’t have an effect on lazy loaded attributes. It takes care of lazy loaded associations.
