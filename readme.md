@@ -3812,8 +3812,6 @@ List books = bookRepository.findAll(  new InIdsSpecification(List.of(1L, 2L, 5L)
 
 Where InIdsSpecification is:
 
-
-
 ```
 public class InIdsSpecification implements Specificationbook {
 private final Listlong ids;
@@ -3834,3 +3832,86 @@ return root.in(ids);
 All three of these approaches trigger the same SQL SELECT and benefit from session-level repeatable reads.
 
 Another approach is to rely on the Hibernate-specific MultiIdentifierLoadAccess interface. Among its advantages, this interface allows you to load multiple entities by ID in batches (withBatchSize()) and to specify if the Persistence Context should be inspected or not before executing the database query (by default it’s not inspected but this can be enabled via enableSessionCheck()). Since MultiIdentifierLoadAccess is a Hibernate-specific API, we need to shape it in Spring Boot style
+
+### Why Use Read-Only Entities Whenever You Plan to Propagate Changes to the Database in a Future Persistence Context
+
+Consider the Author entity that shapes an author profile via several properties as id, name, age, and genre. The scenario requires you to load an Author profile, edit the profile (e.g., modify the age), and save it back in the database. You don’t do this in a single transaction (Persistence Context). You do it in two different transactions, as follows.
+
+
+#### Load Author in Read-Write Mode
+
+Since the Author entity should be modified, you may think that it should be loaded in read-write mode as follows:
+
+@Transactional
+public Author fetchAuthorReadWriteMode() {
+Author author = authorRepository.findByName("Joana Nimar");
+return author;
+}
+
+Note that the fetched author is not modified in the method (transaction). It is fetched and returned, so the current Persistence Context is closed before any modifications and the returned author is detached. Let’s see what do we have in the Persistence Context.
+
+Persistence Context after fetching the read-write entity:
+
+Total number of managed entities: 1
+Total number of collection entries: 0
+
+EntityKey[com.bookstore.entity.Author#4]:
+
+Author{id=4, age=34, name=Joana Nimar, genre=History}
+Entity name: com.bookstore.entity.Author
+Status: MANAGED
+State: [34, History, Joana Nimar]
+
+Notice the highlighted content. The status of the entity is MANAGED and the hydrated state is present as well. In other words, this approach has at least two drawbacks:
+
+1. Hibernate is ready to propagate entity changes to the database (even if we have no modifications in the current Persistence Context), so it keeps the hydrated state in memory.
+2. At flush time, Hibernate will scan this entity for modifications and this scan will include this entity as well.
+
+The performance penalties are reflected in memory and CPU. Storing the unneeded hydrated state consumes memory, while scanning the entity at flush time and collecting it by the Garbage Collector consumes CPU resources. It will be better to avoid these drawbacks by fetching the entity in read-only mode
+
+
+#### Load Author in Read-Only Mode
+
+Since the Author entity is not modified in the current Persistence Context, it can be loaded in read-only mode as follows:
+
+@Transactional(readOnly = true)
+public Author fetchAuthorReadOnlyMode() {
+Author author = authorRepository.findByName("Joana Nimar");
+return author;
+}
+
+
+The entity loaded by this method (transaction) is a read-only entity. Do not confuse read-only entities with DTO (projections). A read-only entity is meant to be modified only so the modifications will be propagated to the database in a future Persistence Context. A DTO (projection) is never loaded in the Persistence Context and is suitable for data that will never be modified
+
+Let’s see the Persistence Context content in this case. Persistence Context after fetching a read-only entity:
+
+Total number of managed entities: 1
+Total number of collection entries: 0
+EntityKey[com.bookstore.entity.Author#4]:
+Author{id=4, age=34, name=Joana Nimar, genre=History}
+Entity name: com.bookstore.entity.Author
+Status: READ_ONLY
+State: null
+
+This time the status is READ\_ONLY and the hydrated state was discarded. Moreover, there is no automatic flush time and no Dirty Checking is applied. This is much better than fetching the entity in read-write mode. We don’t consume memory for storing the hydrated state and we don’t burn CPU with unneeded actions.
+
+#### Update the Author
+
+After fetching and returning the entity (in read-write or read-only mode) it becomes detached. Further, we can modify it and merge it:
+
+// modify the read-only entity in detached state
+Author authorRO = bookstoreService.fetchAuthorReadOnlyMode();
+authorRO.setAge(authorRO.getAge() + 1);
+bookstoreService.updateAuthor(authorRO);
+
+
+// merge the entity
+@Transactional
+public void updateAuthor(Author author) {
+// behind the scene it calls EntityManager#merge()
+authorRepository.save(author);
+}
+
+The author is not the current Persistence Context and this is a merge operation. Therefore, this action is materialized in a SELECT and an UPDATE. Further, the merged entity is managed by Hibernate
+
+The scenario presented in this item is commonly encountered in web applications and is known as a HTTP long conversation. Commonly, in a web application, this kind of scenario requires two or more HTTP requests. Particularly in this case, the first request will load the author profile, while the second request pushes the profile changes.
