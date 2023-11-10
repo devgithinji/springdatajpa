@@ -4296,11 +4296,9 @@ This item shows an alternative to the previous solution; therefore, the goal is 
 
 ![image.png](assets/imagetttty.png)
 
-
 The class from the center of the above Figure is the base class (this is not an entity and doesn’t have a table in the database), BaseAuthor, and is annotated with @MappedSuperclass. This annotation marks a class whose mapping information is applied to the entities that inherit from it.
 
 So, BaseAuthor should host the attributes that are loaded eagerly (id, age, name, and genre). Each subclass of BaseAuthor is an entity that inherits these attributes; therefore, loading a subclass will load these attributes as well:
-
 
 ```
 @MappedSuperclass
@@ -4324,9 +4322,7 @@ public class AuthorShallow extends BaseAuthor {
 }
 ```
 
-
 The AuthorDeep is also a subentity of BaseAuthor. This subentity inherits the attributes from the superclass and defines the avatar as well. The avatar lands in the author table as well by explicitly mapping this subentity via @Table, as follows:
-
 
 ```
 @Entity
@@ -4348,7 +4344,6 @@ If subentities are not explicitly mapped to the same table via @Table, then the 
 For example, without @Table(name = "author"), id, name, age, and genre will land in a table named author\_shallow and in a table named author\_deep. On the other hand, the avatar will land only in the author\_deep table. Obviously, this is not good.
 
 At this point, AuthorShallow allows fetching the id, age, name, and genre eagerly, while the AuthorDeep allows fetching these four attributes plus the avatar. In conclusion, the avatar can be loaded on demand.
-
 
 The next step is quite simple. Just provide the classical Spring repositories for these two subentities as follows:
 
@@ -4386,5 +4381,414 @@ authordeep0_.avatar AS avatar5_0_
 FROM author authordeep0_
 ```
 
-
 At this point, a conclusion starts to take shape. Hibernate supports attributes to be lazily loaded, but this requires Bytecode Enhancement and needs to deal with the Open Session in View and Jackson serialization issues. On the other hand, using subentities might be a better alternative, since it doesn’t require Bytecode Enhancement and doesn’t encounter these issues.
+
+### How to Fetch DTO via Spring Projections
+
+Fetching data from the database results in a copy of that data in memory (usually referred to as the result set or JDBC result set). This zone of memory that holds the fetched result set is known and referred to as the Persistence Context or the First Level Cache or simply the Cache. By default, Hibernate operates in readwrite mode. This means that the fetched result set is stored in the Persistence Context as Object[] (more precisely, as Hibernate-specific EntityEntry instances), and is known in Hibernate terminology as the hydrated state, and as entities built from this hydrated state.
+
+The hydrated state serves the Dirty Checking mechanism (at flush time, Hibernate compares the entities against the hydrated state to discover the potential changes/modifications and triggers UPDATE statements on your behalf), the Versionless Optimistic Locking mechanism (for building the WHERE clause), and the Second Level Cache (the cached entries are built from the disassembled hydrated state, or more precisely, from Hibernate-specific CacheEntry instances built from the hydrated state that was first disassembled).
+
+In other words, after the fetching operation, the fetched result set lives outside the database, in memory. The application accesses/manages this data via entities (so, via Java objects), and, to facilitate this context, Hibernate applies several specific techniques that transform the fetched raw data (JDBC result set) into the hydrated state (this process is known as hydration) and further into the manageable representation (entities).
+
+This is a good reason for NOT fetching data as entities in read-write mode if there is no plan to modify them.
+
+In such a scenario, the read-write data will consume memory and CPU resources for nothing. This adds serious performance penalties to the application. Alternatively, if you need read-only entities then switch to read-only mode (e.g., in Spring, use readOnly element, @Transactional(readOnly=true)). This will instruct Hibernate to discard the hydrated state from memory
+
+Moreover, there will be no automatic flush time and no Dirty Checking. Only entities remain in the Persistence Context. As a consequence, this will save memory and CPU resources (e.g., CPU cycles).
+
+Read-only entities still mean that you plan to modify them at some point in the near future as well (e.g., you don’t plan to modify them in the current Persistence Context, but they will be modified in the detached state and merged later in another Persistence Context).
+
+This is a good reason for NOT fetching data as entities in read-only mode if you never plan to modify them.
+
+However, as an exception here, you can consider read-only entities as an alternative to DTOs that mirror the entity (contains all columns).
+
+As a rule of thumb, if all you need is read-only data that it will not be modified then use Data Transfer Object (DTO) to represent read-only data as Java objects.
+
+Most of the time, DTOs contain only a subset of entity attributes and this way you avoid fetching more data (columns) than needed. Don’t forget that, besides skipping the unneeded columns, you should consider limiting the number of fetched rows via LIMIT or its counterparts.
+
+For a variety of reasons, some voices will tell you to fetch entities only to use a converter/mapper to create DTOs. Before deciding, consider reading the Vlad Mihalcea’s tweet11 that also argues against this anti-pattern. Vlad says: “Don’t fetch entities, only to use a mapper to create DTOs. That’s very inefficient, yet I keep on seeing this anti-pattern being promoted.”
+
+DTO and Spring projections have essentially the same purpose. Martin Folwer defines a DTO as “an object that carries data between processes in order to reduce the number of method calls”. At the implementation level, DTO and Spring projections are not the same.
+
+DTO relies on classes with constructor and getters/setters, while Spring projections rely on interfaces and automatically generated proxies. However, Spring can rely on classes as well and the result is known as DTO projection.
+
+Assume that we have the following Author entity. This entity maps an author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+public interface AuthorRepository extends JpaRepositoryauthor,
+{
+@Transactional(readOnly = true)
+Listauthornameage findFirst2ByGenre(String genre);
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+```
+
+The goal is to fetch only the name and age of the two authors having the same genre. This time, the application relies on Spring projections.
+
+A Spring projection may debut with a Java interface that contains getters only for the columns that should be fetched from the database (e.g., name and age).
+
+This type of Spring projection is known as an interface-based closed projection (methods defined in this kind of projection exactly match the names of the entity properties):
+
+```
+public interface AuthorNameAge {
+String getName();
+int getAge();
+}
+```
+
+Behind the scenes, Spring generates a proxy instance of the projection interface for each entity object. Further, the calls to the proxy are automatically forwarded to that object.
+
+The projection interface can be declared as an inner interface of the repository interface as well. It can be declared static or non-static, as in the following example:
+
+```
+@Repository
+public interface AuthorRepository extends JpaRepositoryauthor,
+{
+@Transactional(readOnly = true)
+Listauthornameage findFirst2ByGenre(String genre);
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+public interface AuthorNameAge {
+String getName();
+int getAge();
+}
+}
+```
+
+The proper query for fetching only two authors in this projection is (take advantage of the Spring Data Query Builder mechanism or rely on JPQL or native SQL):
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+Listauthornameage findFirst2ByGenre(String genre);
+}
+```
+
+Notice that this query returns a List not a List. Calling this method for the given genre will trigger the following SQL:
+
+```
+SELECT
+author0_.name AS col_0_0_,
+author0_.age AS col_1_0_
+FROM author author0_
+WHERE author0_.genre=?
+LIMIT ?
+```
+
+The fetched data can be manipulated via the projection getters, as in this simple example:
+
+```
+Listauthornameage authors = ...;
+for (AuthorNameAge author : authors) {
+```
+
+Using projections is not limited to using the Query Builder mechanism built into the Spring Data repository infrastructure. Fetching projections via JPQL or native SQL queries is an option as well. For example, the previous query can be written via a native SQL query as follows:
+
+@Query(value = "SELECT a.name, a.age FROM author a  WHERE a.genre=?1 LIMIT 2", nativeQuery=true)
+
+When the names of the columns doesn’t correspond to the name of the entity’s attributes then simply rely on the SQL AS keyword to define the corresponding aliases. For example, if the name attribute is mapped to the author\_name column and the age attribute is mapped to the author\_age column then a native SQL query will be as follows:
+
+```
+@Query(value = "SELECT a.author\_name AS name, a.author\_age AS age  FROM author a WHERE a.genre=?1 LIMIT 2",  nativeQuery=true)
+```
+
+#### JPA Named (Native) Queries Can Be Combined with Spring Projections
+
+Say you have a bunch of named queries in your project and you want to take advantage of Spring Projection. Here is a sample of accomplishing this task. First, you define two named queries and their native counterparts using the @NamedQuery and @NamedNativeQuery annotations. The first query, Author.fetchName, represents a scalar mapping to `List<String>`, while the second query, Author.fetchNameAndAge, represents a Spring projection mapping to `List<AuthorNameAge>`:
+
+```
+@NamedQuery(
+name = "Author.fetchName",
+query = "SELECT a.name FROM Author a"
+)
+@NamedQuery(
+name = "Author.fetchNameAndAge",
+query = "SELECT a.age AS age, a.name AS name FROM Author a"
+)
+@Entity
+public class Author implements Serializable {
+...
+}
+```
+
+```
+span
+```
+
+Or, you could define the same queries via a jpa-named-queries.properties file (this is the recommended way for taking advantage of dynamic sort (Sort) in named queries that are not native) and Sort in Pageable (in both, named queries and named native queries):
+
+```
+# Find the names of authors
+Author.fetchName=SELECT a.name FROM Author a
+```
+
+```
+# Find the names and ages of authors
+Author.fetchNameAndAge=SELECT a.age AS age, a.name AS name FROM Author a
+```
+
+And their native counterparts:
+
+```
+# Find the names of authors
+Author.fetchName=SELECT name FROM author
+```
+
+```
+# Find the names and ages of authors
+```
+
+Or, you can define the same queries via the orm.xml file (notice that this approach has the same shortcomings as using @NamedQuery and @NamedNativeQuery):
+
+```
+<!-- Find the names of authors -->
+<named-query name="Author.fetchName">
+ <query>SELECT a.name FROM Author a</query>
+</named-query>
+```
+
+```
+<!-- Find the names and ages of authors -->
+<named-query name="Author.fetchNameAndAge">
+ <query>SELECT a.age AS age, a.name AS name FROM Author a</query>
+</named-query>
+```
+
+And their native counterparts:
+
+```
+<!-- Find the names of authors -->
+<named-native-query name="Author.fetchName">
+ <query>SELECT name FROM author</query>
+</named-native-query>
+```
+
+```
+<!-- Find the names and ages of authors -->
+<named-native-query name="Author.fetchNameAndAge">
+ <query>SELECT age, name FROM author</query>
+</named-native-query>
+```
+
+Independent of which approach you prefer, the AuthorRepository is the same:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+// Scalar Mapping
+List<String> fetchName();
+// Spring projection
+List<AuthorNameAge> fetchNameAndAge();
+}
+```
+
+Or the native counterpart:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ // Scalar Mapping
+ @Query(nativeQuery = true)
+ List<String> fetchName();
+ // Spring projection
+ @Query(nativeQuery = true)
+ List<AuthorNameAge> fetchNameAndAge();
+}
+```
+
+That’s all! Spring Boot will automatically do the rest for you. Depending on how the
+named (native) queries are provided, you can choose from the following applications:
+
+1. How to use JPA named queries via @NamedQuery and Spring projection
+2. How to use JPA named native queries via @NamedNativeQuery and Spring projection
+3. How to use JPA named queries via a properties file and Spring projection
+4. How to use JPA named native queries via a properties file and Spring projection
+5. How to use JPA named queries via the orm.xml file and Spring projection
+6. How to use JPA named native queries via the orm.xml file and Spring projection
+
+#### Class-Based Projections
+Besides interface-based projections, Spring supports class-based projections. This time,
+instead of an interface, you write a class. For example, the AuthorNameAge interface
+becomes the AuthorNameAge class from the following
+
+```
+public class AuthorNameAge {
+ private String name;
+ private int age;
+ public AuthorNameAge(String name, int age) {
+ this.name = name;
+ this.age = age;
+ }
+ // getters, setters, equals() and hashCode() omitted for brevity
+}
+```
+As you can see, the names of the constructor's arguments must match the entity properties.
+
+Notice that interface-based projections can be nested, while class-based
+projections cannot
+
+#### How to Reuse a Spring Projection
+
+This time, consider that we’ve enriched the Author entity to contain the following
+attributes: id, name, genre, age, email, address, and rating. Or, generally speaking,
+an entity with a large number of attributes. When an entity has a significant number of
+attributes, we potentially need a bunch of read-only queries to fetch different subsets of
+attributes. For example, a read-only query may need to fetch the age, name, genre, email,
+and address, while another query may need to fetch the age name and genre, and yet
+another query may need to fetch only the name and email.
+
+To satisfy these three queries, we may define three interface-based Spring closed
+projections. This is not quite practical. For example, later, we may need one more readonly query that fetches the name and address. Following this logic, we need to define
+one more Spring projection as well. It will be more practical to define a single Spring
+projection that works for all read-only queries executed against the authors.
+
+To accomplish this task, we define a Spring projection that contains getters to satisfy
+the heaviest query (in this case, the query that fetches the age, name, genre, email, and
+address):
+
+```
+@JsonInclude(JsonInclude.Include.NON_DEFAULT)
+public interface AuthorDto {
+ public Integer getAge();
+ public String getName();
+ public String getGenre();
+ public String getEmail();
+ public String getAddress();
+}
+```
+
+The projection was annotated with @JsonInclude(JsonInclude.Include.NON_
+DEFAULT). This is needed to avoid serializing null values (values that haven’t been
+fetched in the current query). This will instruct the Jackson serialization mechanism to
+skip null values from the resulted JSON.
+Now, we can rely on Spring Data Query Builder mechanism to generate the query for
+fetching the age, name, genre, email, and address as follows:
+
+List<AuthorDto> findBy();
+
+Or, you can write a JPQL as follows:
+
+```
+@Query("SELECT a.age AS age, a.name AS name, a.genre AS genre, "
+ + "a.email AS email, a.address AS address FROM Author a")
+List<AuthorDto> fetchAll();
+```
+Calling fetchAll() and representing the result as JSON will produce the following:
+
+```
+[
+ {
+ "genre":"Anthology",
+ "age":23,
+ "email":"markj@gmail.com",
+ "name":"Mark Janel",
+ "address":"mark's address"
+ },
+ ...
+]
+```
+Further, you can reuse the AuthorDto projection for a query that fetches only the age,
+name, and genre:
+
+```
+@Query("SELECT a.age AS age, a.name AS name, a.genre AS genre FROM Author a")
+List<AuthorDto> fetchAgeNameGenre();
+```
+Calling fetchAgeNameGenre() and representing the result as JSON will produce
+something as follows:
+
+```
+ {
+ "genre":"Anthology",
+ "age":23,
+ "name":"Mark Janel"
+ },
+ ...
+]
+```
+Or, you can reuse the AuthorDto projection for a query that fetches only the name and email:
+
+```
+@Query("SELECT a.name AS name, a.email AS email FROM Author a")
+List<AuthorDto> fetchNameEmail();
+```
+Calling fetchNameEmail() and representing the result as JSON will produce something
+as follows:
+
+```
+[
+ {
+ "email":"markj@gmail.com",
+ "name":"Mark Janel"
+ },
+ ...
+]
+```
+
+#### How to Use Dynamic Spring Projections
+
+Consider the Author entity from the previous section, which has the following attributes:
+id, name, genre, age, email, address, and rating. Moreover, consider two Spring
+projections for this entity, defined as follows:
+
+```
+public interface AuthorGenreDto {
+ public String getGenre();
+}
+```
+
+```
+public interface AuthorNameEmailDto {
+ public String getName();
+ public String getEmail();
+}
+```
+You can fetch the entity type, AuthorGenreDto type, and AuthorNameEmailDto type via
+the same query-method by writing three queries, as shown here:
+
+```
+Author findByName(String name);
+AuthorGenreDto findByName(String name);
+AuthorNameEmailDto findByName(String name);
+```
+
+You essentially write the same query-method to return different types. This is somehow
+cumbersome, and Spring tackles such cases via dynamic projections. You can apply
+dynamic projections just by declaring a query-method with a Class parameter, as follows:
+
+``<T> T findByName(String name, Class<T> type);``
+
+Here are two more examples:
+
+```
+<T> List<T> findByGenre(String genre, Class<T> type);
+@Query("SELECT a FROM Author a WHERE a.name=?1 AND a.age=?2")
+<T> T findByNameAndAge(String name, int age, Class<T> type);
+```
+This time, depending on the type that you expect to be returned, you can call
+findByName() as follows:
+
+```
+Author author = authorRepository.findByName(
+ "Joana Nimar", Author.class);
+AuthorGenreDto author = authorRepository.findByName(
+ "Joana Nimar", AuthorGenreDto.class);
+AuthorNameEmailDto author = authorRepository.findByName(
+ "Joana Nimar", AuthorNameEmailDto.class);
+```

@@ -1,5 +1,6 @@
 package com.densoft.springdatajpabestpractices.repository;
 
+import com.densoft.springdatajpabestpractices.dto.AuthorDto;
 import com.densoft.springdatajpabestpractices.model.Author;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -18,7 +19,17 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
 
     List<Author> findByAge(int age);
 
-
+    List<AuthorDto> findBy();
+    //fetch all data
+    @Query("SELECT a.age AS age, a.name AS name, a.genre AS genre, "
+            + "a.email AS email, a.address AS address FROM Author a")
+    List<AuthorDto> fetchAll();
+    //fetch age, name and genre
+    @Query("SELECT a.age AS age, a.name AS name, a.genre AS genre FROM Author a")
+    List<AuthorDto> fetchAgeNameGenre();
+    //    fetch name and email
+    @Query("SELECT a.name AS name, a.email AS email FROM Author a")
+    List<AuthorDto> fetchNameEmail();
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM Author a WHERE a.id = ?1")

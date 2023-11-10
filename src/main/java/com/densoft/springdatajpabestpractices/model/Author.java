@@ -20,9 +20,9 @@ public class Author implements Serializable {
     private Long id;
 
     private String name;
-    @Basic(fetch = FetchType.LAZY)
+    private String email;
     private String genre;
-    @Basic(fetch = FetchType.LAZY)
+    private String address;
     private int age;
 
     @OneToMany(cascade = CascadeType.ALL,
@@ -53,6 +53,14 @@ public class Author implements Serializable {
 
     public Author genre(String genre) {
         this.genre = genre;
+        return this;
+    }
+    public Author email(String email){
+        this.email = email;
+        return this;
+    }
+    public Author address(String address){
+        this.address = address;
         return this;
     }
 
