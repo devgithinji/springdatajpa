@@ -3367,7 +3367,6 @@ Hibernate Bytecode Enhancement serves three main mechanisms (for each mechanism,
 
 Consider a legacy database that has a table author with the following Data Definition Language (DDL):
 
-
 ```
 CREATE TABLE author (
 id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -3519,3 +3518,1277 @@ return bookReview;
 ```
 
 Finally, you need the event handler, which is implemented as follows:
+
+## Fetching
+
+### How to use Direct fetching
+
+Direct fetching or fetching by ID is the preferable way to fetch an entity when its identifier is known and its lazy associations will not be navigated in the current Persistence Context.
+
+By default, direct fetching will load the entity according to the default or specified FetchType. It’s important to keep in mind that, by default, the JPA @OneToMany and @ManyToMany associations are considered LAZY, while the @OneToOne and @ManyToOne associations are considered EAGER.
+
+So, fetching an entity by ID that has an EAGER association will load that association in the Persistence Context even if is not needed, and this causes performance penalties. On the other hand, fetching an entity that has a LAZY association and accessing this association in the current Persistence Context will cause extra queries for loading it as well—also leading to performance penalties.
+
+The best approach is to keep all the associations LAZY and rely on manual fetching strategy  to load these associations. Rely on direct fetching only if you don’t plan to access the LAZY associations in the current Persistence Context.
+
+Now, let’s look at several approaches for fetching an entity by ID. Consider the following Author entity:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+```
+
+The purpose of the following three examples is to use direct fetching to load the entity with an ID of 1.
+
+#### Direct Fetching via Spring Data
+
+You can do direct fetching in Spring Data via the built-in findById() method. This method gets as argument the ID and returns an Optional that wraps the corresponding entity. In code, findById() is used as follows:
+
+```
+@Repository
+public interface AuthorRepository extends JpaRepositoryauthor, {}
+Optionalauthor author = authorRepository.findById(1L);
+```
+
+The SQL SELECT statement that loads this Author is:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+```
+
+Behind the scenes, findById() uses the EntityManager.find()
+method.
+
+#### Fetching via EntityManager
+
+You can inject the EntityManager via @PersistenceContext. Having the EntityManager in your hands, the rest is just about calling the find() method. This method follows Spring Data style and returns an Optional:
+
+```
+@PersistenceContextprivate EntityManager entityManager;
+```
+
+```
+@Override
+public Optionalt find(Classt clazz, ID id) {
+if (id == null) {
+throw new IllegalArgumentException("ID cannot be null");
+}
+return Optional.ofNullable(entityManager.find(clazz, id));
+}
+```
+
+The SQL SELECT statement that loads this Author is the same as with findById():
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+```
+
+#### Fetching via Hibernate-Specific Session
+
+To fetch by ID using the Hibernate-specific Session.get() method, you need to unwrap the Session from EntityManager. The following method performs this unwrap and returns an Optional:
+
+```
+@PersistenceContext
+private EntityManager entityManager;
+@Override
+public Optionalt findViaSession(Classt clazz, ID id) {
+if (id == null) {
+throw new IllegalArgumentException("ID cannot be null");
+}
+Session session = entityManager.unwrap(Session.class);
+return Optional.ofNullable(session.get(clazz, id));
+}
+```
+
+The SQL SELECT statement that loads this Author is the same as in the case of findById() and EntityManager:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre3_0_0_,
+author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+```
+
+The JPA persistence provider (Hibernate) fetches the entity with the given ID via findById(), find(), and get(), by searching it in this order:
+
+1. The current Persistence Context (if it’s not found, go to the next step)
+2. The Second Level Cache (if it’s not found, go to the next step)
+3. The database
+
+### Direct Fetching and Session-Level Repeatable-Reads
+
+This section expands on the first bullet (searching in the current Persistence Context). Why does Hibernate check the Persistence Context first to find the entity with the given ID? The answer is that Hibernate guarantees session-level repeatable reads. This means that the entity fetched the first time is cached in the Persistence Context (the First Level Cache). Subsequent fetches of the same entity (via direct fetching or explicit entity query (JPQL/HQL)) are done from the Persistence Context.
+
+In other words, session-level repeatable reads prevent lost updates in concurrent writes cases.
+
+Check out the following example, which groups these three direct fetching techniques under a transactional service-method:
+
+```
+@Transactional(readOnly=true)
+public void directFetching() {
+// direct fetching via Spring Data
+Optionalauthor resultSD = authorRepository.findById(1L);
+System.out.println("Direct fetching via Spring Data: "resultSD.get());
+// direct fetching via EntityManager
+Optionalauthor resultEM = dao.find(Author.class, 1L);
+System.out.println("Direct fetching via EntityManager: "resultEM.get());
+// direct fetching via Session
+Optionalauthor resultHS = dao.findViaSession(Author.class, 1L);
+System.out.println("Direct fetching via Session: "resultHS.get());
+}
+```
+
+How many SELECT statements will be executed? If you answered one, you are right! There is a single SELECT caused by the authorRepository.findById(1L) call. The returned author is cached in the Persistence Context. The subsequent calls—dao.find(Author. class, 1L) and dao.findViaSession(Author.class, 1L)—fetch the same author instance from the Persistence Context without hitting the underlying database.
+
+Now, let’s assume that we use explicit JPQL queries, as in the following example. First, we write the explicit JPQL that fetches an author by ID (we use Optional just to maintain the trend, but it’s not relevant for this topic):
+
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+@Query("SELECT a FROM Author a WHERE a.id = ?1")
+public Optional<Author> fetchById(long id);
+}
+
+Next, let’s look at the following service-method
+
+```
+@Transactional(readOnly=true)
+public void directFetching() {
+// direct fetching via Spring Data
+Optionalauthor resultSD = authorRepository.findById(1L);
+System.out.println("Direct fetching via Spring Data: "resultSD.get());
+// direct fetching via EntityManager
+Optionalauthor resultJPQL = authorRepository.fetchById(1L);
+System.out.println("Explicit JPQL: "resultJPQL.get());
+}
+```
+
+The first SELECT is caused by the authorRepository.findById(1L) call, when the Persistence Context is empty. The second SELECT hits the database because, unless we use the Second Level Cache, any explicit query will be executed against the database.
+
+Therefore, our explicit SELECT is not an exception to this rule. The author returned as the result of calling authorRepository.fetchById(1L) is the one from the current loaded database snapshot or is the author from the Persistence Context that was loaded when we called authorRepository.findById(1L)? Since the Persistence Context guarantees session-level repeatable-reads, Hibernate ignores the database snapshot loaded via our JPQL and returns the author that already exists in the Persistence Context.
+
+From a performance perspective, it is advisable to use findById(), find(), or get() instead of an explicit JPQL/SQL to fetch an entity by ID. That way, if the entity is present in the current Persistence Context, there is no SELECT triggered against the database and no data snapshot to be ignored.
+
+While, at first glance, this behavior may not be that obvious, we can reveal it via a simple test using two concurrent transactions shaped via the Spring TransactionTemplate API. Consider the following author:
+
+INSERT INTO author (age, name, genre, id)  VALUES (23, "Mark Janel", "Anthology", 1);
+
+```
+private final AuthorRepository authorRepository;
+private final TransactionTemplate template;public void process() {
+template.setPropagationBehavior(
+TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+template.setIsolationLevel(Isolation.READ_COMMITTED.value());
+// Transaction A
+template.execute(new TransactionCallbackWithoutResult() {
+@Override
+protected void doInTransactionWithoutResult(
+TransactionStatus status) {
+Author authorA1 = authorRepository.findById(1L).orElseThrow();
+System.out.println("Author A1: " + authorA1.getName() + "\n");
+// Transaction B
+template.execute(new TransactionCallbackWithoutResult() {
+@Override
+protected void doInTransactionWithoutResult(
+TransactionStatus status) {
+Author authorB = authorRepository
+.findById(1L).orElseThrow();
+authorB.setName("Alicia Tom");
+System.out.println("Author B: "authorB.getName() + "\n");
+}
+});
+// Direct fetching via findById(), find() and get()
+// doesn't trigger a SELECT
+// It loads the author directly from Persistence Context
+Author authorA2 = authorRepository.findById(1L).orElseThrow();
+Chapter 3 Fetching
+143
+System.out.println("\nAuthor A2: " + authorA2.getName() + "\n");
+// JPQL entity queries take advantage of
+// session-level repeatable reads
+// The data snapshot returned by the triggered SELECT is ignored
+Author authorViaJpql = authorRepository.fetchByIdJpql(1L);
+System.out.println("Author via JPQL: "authorViaJpql.getName() + "\n");
+// SQL entity queries take advantage of
+// session-level repeatable reads
+// The data snapshot returned by the triggered SELECT is ignored
+Author authorViaSql = authorRepository.fetchByIdSql(1L);
+System.out.println("Author via SQL: "authorViaSql.getName() + "\n");
+// JPQL query projections always load the latest database state
+String nameViaJpql = authorRepository.fetchNameByIdJpql(1L);
+System.out.println("Author name via JPQL: " + nameViaJpql + "\n");
+// SQL query projections always load the latest database state
+String nameViaSql = authorRepository.fetchNameByIdSql(1L);
+System.out.println("Author name via SQL: " + nameViaSql + "\n");
+}
+});
+}
+```
+
+There is a lot of code but it’s pretty simple. First of all, we run this code against MySQL, which relies on REPEATABLE\_READ as the default isolation level
+
+We need to switch to the READ\_COMMITTED isolation level in order to highlight how the Hibernate session-level repeatable reads work without interleaving the REPEATABLE\_READ isolation level. We also ensure that the second transaction (Transaction B) doesn’t participate in the context of Transaction A by setting PROPAGATION\_REQUIRES\_NEW
+
+Further, we start Transaction A (and Persistence Context A). In this transaction context, we call findById() to fetch the author with an ID of 1. So, this author is loaded in the Persistence Context A via the proper SELECT query.
+
+Next, we leave Transaction A as it is and start Transaction B (and Persistence Context B). In Transaction B context, we load the author with an ID of 1 via the proper SELECT and perform an update of the name (Mark Janel becomes Alicia Tom). The corresponding UPDATE is executed against the database at flush time, right before Transaction B commits. So now, in the underlying database, the author with an ID of 1 has the name Alicia Tom
+
+Now, we come back to Transaction A (and Persistence Context A) and trigger a succession of queries, as follows:
+
+First, we call findById() to fetch the author with an ID of 1. The author is returned directly from Persistence Context A (without any SELECT) and the name is Mark Janel. Therefore, the session-level repeatable reads work as expected
+
+Second, we execute the following explicit JPQL query (fetchByIdJpql()):
+
+```
+@Query("SELECT a FROM Author a WHERE a.id = ?1")
+public Author fetchByIdJpql(long id);
+```
+
+The data snapshot returned by the triggered SELECT is ignored and the returned author is the one from Persistence Context A (Mark Janel). Again, the session-level repeatable reads work as expected.
+
+Next, we execute the following explicit native SQL query (fetchByIdSql()):
+
+```
+@Query(value = "SELECT * FROM author WHERE id = ?1",
+nativeQuery = true)
+public Author fetchByIdSql(long id);
+```
+
+Again, the data snapshot returned by the triggered SELECT is ignored and the returned author is the one from Persistence Context A (Mark Janel). The session-level repeatable reads work as expected.
+
+So far, we can conclude that the Hibernate session-level repeatable reads work as expected for entity queries expressed via JPQL or native SQL. Next, let’s see how this works with SQL query projections (SQL query projections involve selecting specific columns from a table to retrieve only the necessary information).
+
+We execute the following JPQL query projection (fetchNameByIdJpql()):
+
+```
+@Query("SELECT a.name FROM Author a WHERE a.id = ?1")
+public String fetchNameByIdJpql(long id);
+```
+
+This time, the data snapshot returned by the triggered SELECT is not ignored. The returned author has the name Alicia Tom. Therefore, the session-level repeatable reads didn’t work in this case.
+
+Finally, we execute the following native SQL query projection (fetchNameByIdSql()):
+
+```
+@Query(value = "SELECT name FROM author WHERE id = ?1",
+nativeQuery = true)
+public String fetchNameByIdSql(long id);
+```
+
+Again, the data snapshot returned by the triggered SELECT is not ignored. The returned author has the name Alicia Tom. Therefore, the session-level repeatable reads didn’t work.
+
+So far, we can conclude that Hibernate session-level repeatable reads don’t work for SQL query projections expressed via JPQL or as native SQL. These kinds of queries always load the latest database state.
+
+Nevertheless, if we switch the transaction isolation level back to REPEATABLE\_READ then SQL query projection will return the author Mark Janel. This is happening because, as the name suggests, the REPEATABLE\_READ isolation level states that a transaction reads the same result across multiple reads. In other words, the REPEATABLE\_READ isolation level prevents the SQL non-repeatable reads anomaly. For example, a transaction that reads one record from the database multiple times obtains the same result at each read.
+
+Do not confuse Hibernate session-level repeatable reads with the REPEATABLE\_READ transaction isolation level.
+
+Hibernate provides session-level repeatable reads out-of-the-box. But sometimes you’ll want to load the latest state from the database. In such cases, you can call the EntityManager#refresh() method (since Spring Data doesn’t expose this method, you can extend the JpaRepository to add it).
+
+Do not confuse Hibernate session-level repeatable reads with applicationlevel repeatable reads, which are commonly employed when the conversation spans over multiple requests
+
+Hibernate guarantees session-level repeatable reads and offers support for application-level repeatable reads. More precisely, the Persistence Context guarantees session-level repeatable reads and you can shape application-level repeatable reads via detached entities or the Extended Persistence Context. Application-level repeatable reads should receive the help of an application-level concurrency control strategy such as Optimistic Locking in order to avoid lost updates.
+
+#### Direct Fetching Multiple Entities by ID
+
+Sometimes you’ll need to load more than one entity by ID. In such cases, the quickest approach to loading the entities by ID will rely on a query that uses the IN operator.
+
+Spring Data provides out-of-the-box the findAllById() method. It takes as argument an Iterable of the IDs and returns a List of entities
+
+```
+List books = bookRepository.findAllById(List.of(1L, 2L, 5L));
+```
+
+The same result (the same triggered SQL) can be obtained via JPQL as follows:
+
+```
+@Query("SELECT b FROM Book b WHERE b.id IN ?1")
+Listbook fetchByMultipleIds(Listlong ids);
+```
+
+Using the IN clause in combination with a database that supports Execution Plan Cache can be further optimized
+
+Using Specification is also an option. Check out the following example:
+
+List books = bookRepository.findAll(  new InIdsSpecification(List.of(1L, 2L, 5L)));
+
+Where InIdsSpecification is:
+
+```
+public class InIdsSpecification implements Specificationbook {
+private final Listlong ids;
+public InIdsSpecification(Listlong ids) {
+this.ids = ids;
+}
+@Override
+public Predicate toPredicate(Rootbook root,
+CriteriaQuery? cquery, CriteriaBuilder cbuilder) {
+return root.in(ids);
+// or
+// Expressionstring expression = root.get("id");
+// return expression.in(ids);
+}
+}
+```
+
+All three of these approaches trigger the same SQL SELECT and benefit from session-level repeatable reads.
+
+Another approach is to rely on the Hibernate-specific MultiIdentifierLoadAccess interface. Among its advantages, this interface allows you to load multiple entities by ID in batches (withBatchSize()) and to specify if the Persistence Context should be inspected or not before executing the database query (by default it’s not inspected but this can be enabled via enableSessionCheck()). Since MultiIdentifierLoadAccess is a Hibernate-specific API, we need to shape it in Spring Boot style
+
+### Why Use Read-Only Entities Whenever You Plan to Propagate Changes to the Database in a Future Persistence Context
+
+Consider the Author entity that shapes an author profile via several properties as id, name, age, and genre. The scenario requires you to load an Author profile, edit the profile (e.g., modify the age), and save it back in the database. You don’t do this in a single transaction (Persistence Context). You do it in two different transactions, as follows.
+
+#### Load Author in Read-Write Mode
+
+Since the Author entity should be modified, you may think that it should be loaded in read-write mode as follows:
+
+```
+@Transactional
+public Author fetchAuthorReadWriteMode() {
+Author author = authorRepository.findByName("Joana Nimar");
+return author;
+}
+```
+
+Note that the fetched author is not modified in the method (transaction). It is fetched and returned, so the current Persistence Context is closed before any modifications and the returned author is detached. Let’s see what do we have in the Persistence Context.
+
+Persistence Context after fetching the read-write entity:
+
+Total number of managed entities: 1
+Total number of collection entries: 0
+
+EntityKey[com.bookstore.entity.Author#4]:
+
+Author{id=4, age=34, name=Joana Nimar, genre=History}
+Entity name: com.bookstore.entity.Author
+Status: MANAGED
+State: [34, History, Joana Nimar]
+
+Notice the highlighted content. The status of the entity is MANAGED and the hydrated state is present as well. In other words, this approach has at least two drawbacks:
+
+1. Hibernate is ready to propagate entity changes to the database (even if we have no modifications in the current Persistence Context), so it keeps the hydrated state in memory.
+2. At flush time, Hibernate will scan this entity for modifications and this scan will include this entity as well.
+
+The performance penalties are reflected in memory and CPU. Storing the unneeded hydrated state consumes memory, while scanning the entity at flush time and collecting it by the Garbage Collector consumes CPU resources. It will be better to avoid these drawbacks by fetching the entity in read-only mode
+
+#### Load Author in Read-Only Mode
+
+Since the Author entity is not modified in the current Persistence Context, it can be loaded in read-only mode as follows:
+
+```
+@Transactional(readOnly = true)
+public Author fetchAuthorReadOnlyMode() {
+Author author = authorRepository.findByName("Joana Nimar");
+return author;
+}
+```
+
+The entity loaded by this method (transaction) is a read-only entity. Do not confuse read-only entities with DTO (projections). A read-only entity is meant to be modified only so the modifications will be propagated to the database in a future Persistence Context. A DTO (projection) is never loaded in the Persistence Context and is suitable for data that will never be modified
+
+Let’s see the Persistence Context content in this case. Persistence Context after fetching a read-only entity:
+
+Total number of managed entities: 1
+Total number of collection entries: 0
+EntityKey[com.bookstore.entity.Author#4]:
+Author{id=4, age=34, name=Joana Nimar, genre=History}
+Entity name: com.bookstore.entity.Author
+Status: READ_ONLY
+State: null
+
+This time the status is READ\_ONLY and the hydrated state was discarded. Moreover, there is no automatic flush time and no Dirty Checking is applied. This is much better than fetching the entity in read-write mode. We don’t consume memory for storing the hydrated state and we don’t burn CPU with unneeded actions.
+
+#### Update the Author
+
+After fetching and returning the entity (in read-write or read-only mode) it becomes detached. Further, we can modify it and merge it:
+
+```
+// modify the read-only entity in detached state
+Author authorRO = bookstoreService.fetchAuthorReadOnlyMode();
+authorRO.setAge(authorRO.getAge() + 1);
+bookstoreService.updateAuthor(authorRO);// merge the entity
+@Transactional
+public void updateAuthor(Author author) {
+// behind the scene it calls EntityManager#merge()
+authorRepository.save(author);
+}
+```
+
+The author is not the current Persistence Context and this is a merge operation. Therefore, this action is materialized in a SELECT and an UPDATE. Further, the merged entity is managed by Hibernate
+
+The scenario presented in this item is commonly encountered in web applications and is known as a HTTP long conversation. Commonly, in a web application, this kind of scenario requires two or more HTTP requests. Particularly in this case, the first request will load the author profile, while the second request pushes the profile changes.
+
+### How to Lazy Load the Entity Attributes via Hibernate Bytecode Enhancement
+
+Assume that the application contains the following Author entity. This entity maps an author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+@Lob
+private byte[] avatar;
+private int age;
+private String name;
+private String genre;
+...
+// getters and setters omitted for brevity
+}
+```
+
+#### enabling Lazy Loading of Attributes
+
+Attributes such as the entity identifier (id), name, age, or genre are to be fetched eagerly on every entity load. But the avatar should be fetched lazily, only when it’s being accessed by the application code. So, the avatar column shouldn’t be present in the SQL triggered to fetch an Author.
+
+By default, the attributes of an entity are loaded eagerly (all at once, in the same query), so avatar will be loaded even if it is not needed/required by the application. The avatar represents a picture; therefore, it’s a potential large amount of byte data
+
+Loading the avatar on every entity load without using it is a performance penalty that should be eliminated.
+
+A solution to this problem relies on attributes lazy loading.
+
+Attributes lazy loading is useful for column types that store large amounts of data—CLOB, BLOB, VARBINARY, etc.—or for details that should be loaded on demand.
+
+To employ attributes lazy loading, you need to follow some steps. The first step is to add Hibernate Bytecode Enhancement plug-in for Maven. Next, you instruct Hibernate to instrument the entity classes’ bytecode with the proper instructions by enabling lazy initialization via the enableLazyInitialization configuration
+
+For Maven, add pom.xml to the Bytecode Enhancement plug-in in the  section, as shown here:
+
+![image.png](assets/imageadsafd.png)
+
+Hibernate Bytecode Enhancement takes place at build-time; therefore, it doesn’t add overhead to runtime. Without adding Bytecode Enhancement as shown here, the attribute lazy loading will not work.
+
+The second step consists of annotating the entity attributes that should be loaded lazy with @Basic(fetch = FetchType.LAZY). For the Author entity, annotate the avatar attribute as follows:
+
+```
+@Lob
+@Basic(fetch = FetchType.LAZY)
+private byte[] avatar;
+```
+
+By default, the attributes are annotated with @Basic, which relies on the default fetch policy. The default fetch policy is FetchType.EAGER.
+
+Further, a classical Spring repository for the Author entity can be written. Eventually, just for fun, add a query to fetch all authors older than or equal to the given age:
+
+```
+@Repository
+public interface AuthorRepository extends JpaRepositoryauthor, {
+@Transactional(readOnly=true)
+Listauthor findByAgeGreaterThanEqual(int age);
+}
+```
+
+The following service-method will load all authors older than the given age. The avatar attribute will not be loaded:
+
+```
+public Listauthor fetchAuthorsByAgeGreaterThanEqual(int age) {
+Listauthor authors = authorRepository.findByAgeGreaterThanEqual(age);
+return authors;
+}
+```
+
+Calling this method will reveal an SQL that fetches only id, name, age, and genre:
+
+```
+SELECT
+author0_.id AS id1_0_,
+author0_.age AS age2_0_,
+author0_.genre AS genre4_0_,
+author0_.name AS name5_0_
+FROM author author0_
+WHERE author0_.age >= ?
+```
+
+Picking up an author id from the returned list of authors and passing it to the following method will fetch the avatar attribute as well. The explicit call of the getAvatar() method will trigger a secondary SQL meant to load the avatar’s bytes:
+
+```
+@Transactional(readOnly = true)
+public byte[] fetchAuthorAvatarViaId(long id) {
+Author author = authorRepository.findById(id).orElseThrow();
+return author.getAvatar(); // lazy loading of 'avatar'
+}
+```
+
+Fetching the author with the given id is accomplished in two SELECT statements. The first SELECT fetches the id, age, name, and genre, while the second SELECT fetches the avatar:
+
+```
+SELECT
+author0_.id AS id1_0_0_,
+author0_.age AS age2_0_0_,
+author0_.genre AS genre4_0_0_,
+author0_.name AS name5_0_0_
+FROM author author0_
+WHERE author0_.id = ?SELECT
+author_.avatar AS avatar3_0_
+FROM author author_
+WHERE author_.id = ?
+```
+
+Trying to fetch the lazy attributes (e.g., avatar) outside the context of a session (outside a Persistence Context) will cause a LazyInitializationException.
+
+### Attribute Lazy Loading and N+1
+
+The N+1 represents a performance penalty caused by triggering more SQL statements (queries) than needed/expected. In other words, performing more database round trips than necessary consumes resources such as CPU, RAM memory, database connections, Chapter 3 Fetching 156 etc. Most of the time, N+1 remains undetected until you are inspecting (counting/ asserting) the number of triggered SQL statements.
+
+The more additional and unnecessary SQL statements you have, the slower the application will get.
+
+Consider the following method:
+
+```
+@Transactional(readOnly = true)
+public Listauthor fetchAuthorsDetailsByAgeGreaterThanEqual(int age) {
+Listauthor authors = authorRepository.findByAgeGreaterThanEqual(age);
+// don't do this since this is a N+1 case
+authors.forEach(a -> {
+a.getAvatar();
+});
+return authors;
+}
+```
+
+The query triggered by calling findByAgeGreaterThanEqual() fetches a list of authors older than the given age (this is the 1 from N+1). Looping the list of authors and calling getAvatar() for each author leads to a number of additional queries equal to the number of authors. In other words, since the avatar is fetched lazily, calling getAvatar() will trigger an SQL SELECT for each author (this is the N from N+1). For two authors, we have the following three SQL statements
+
+```
+SELECT
+author0_.id AS id1_0_,
+author0_.age AS age2_0_,
+author0_.genre AS genre4_0_,
+author0_.name AS name5_0_
+FROM author author0_
+WHERE author0_.age >= ?SELECT
+author_.avatar AS avatar3_0_
+FROM author author_
+WHERE author_.id = ?SELECT
+author_.avatar AS avatar3_0_
+FROM author author_
+WHERE author_.id = ?
+```
+
+You can avoid N+1 performance penalties by employing the subentities technique (see Item 24) or by triggering an SQL SELECT that explicitly loads the lazy fetched attributes in a DTO. For example, the following query will trigger a single SELECT to fetch the names and avatars of authors older than the given age as a DTO (Spring projection):
+
+```
+public interface AuthorDto {
+public String getName();
+public byte[] getAvatar();
+}
+@Transactional(readOnly = true)
+@Query("SELECT a.name AS name, a.avatar AS avatar
+FROM Author a WHERE a.age >= ?1")
+Listauthordto findDtoByAgeGreaterThanEqual(int age);
+```
+
+### Attribute Lazy Loading and Lazy Initialization Exceptions
+
+Enabling attributes lazy loading in a Spring Boot application will eventually lead to lazy initialization exceptions that are specific to this context. Commonly, this happens when the developer disables Open Session in View (which is enabled by default in Spring Boot).
+
+By default, Open Session in View forces the current Persistence Context to remain open, while Jackson forces initialization of lazy loaded attributes (generally speaking, the View layer triggers the proxy initialization). For example, if Open Session in View is enabled, and the application returns a List from a REST controller endpoint, the View (Jackson serializes the JSON response) will force the initialization of the avatar attribute as well. OSIV will supply the current active Session, so no lazy initialization issues will occur
+
+Obviously, this is against the application’s goal. The solution consists of disabling OSIV by setting the following in application.properties:
+
+```
+spring.jpa.open-in-view=false
+```
+
+But this leads to an exception. This time, when Jackson tries to serialize the List to JSON (this is the data received by the client of the application via a controller endpoint), there will be no active Session available.
+
+Most probably, the exception is as follows:
+
+Could not write JSON: Unable to perform requested lazy initialization [com. bookstore.entity.Author.avatar] - no session and settings disallow loading outside the Session;
+
+So, Jackson forces the initialization of lazy loaded attributes without being in a Hibernate session, and this causes a lazy initialization exception. On the other hand, there is nothing wrong with not having an active Hibernate session at this point.
+
+There are at least two ways to fix this issue and still take advantage of attributes lazy loading
+
+**Setting Explicit Default Values for Lazy Loaded Attributes**
+
+A quick approach consists of explicitly setting default values for lazy loaded attributes. If Jackson sees that the lazy loaded attributes have been initialized with values, then it will not attempt to initialize them. Consider the following method:
+
+```
+@Transactional(readOnly = true)
+public Author fetchAuthor(long id) {
+Author author = authorRepository.findById(id).orElseThrow();
+if (author.getAge() < 40) {
+author.getAvatar();
+} else {
+author.setAvatar(null);
+}
+return author;
+}
+```
+
+The method fetches an author by id, and, if the fetched author is younger than 40, it loads the avatar via a secondary query. Otherwise, the avatar attribute is initialized with null. This time, Jackson serialization doesn’t cause any problems, but the JSON received by the client may be as follows:
+
+```
+{
+"id": 1,
+"avatar": null,
+"age": 43,
+"name": "Martin Ticher",
+"genre": "Horror"
+}
+```
+
+Now, depending on the implemented feature, you may want to serialize the avatar as null or instruct Jackson not to serialize the attributes that have default values (e.g., null in the case of objects, 0 in the case of primitive integers, etc.).
+
+Most commonly, the application should avoid the serialization of avatar; therefore, setting @JsonInclude(Include.NON\_DEFAULT) is the setting needed at entity-level. In the presence of this setting, Jackson will skip the serialization of any attribute having a Chapter 3 Fetching 160 default value (depending on your case, other values of Include can be used as well, such as Include.NON\_EMPTY):
+
+```
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+...
+@Entity
+@JsonInclude(Include.NON_DEFAULT)
+public class Author implements Serializable {
+...
+}
+```
+
+This time, the resulting JSON doesn’t contain the avatar:
+
+```
+{
+"id": 1,
+"age": 43,
+"name": "Martin Ticher",
+"genre": "Horror"
+}
+```
+
+Setting explicit default values for lazy loaded attributes keeps the View from triggering the lazy loading of them. From this angle, it doesn’t matter if OSIV is enabled or disabled since the Session will not be used. However, the Session is still open and consumes resources, so it is advisable to disable OSIV.
+
+#### Providing a Custom Jackson Filter
+
+Alternatively, Jackson can be informed via a custom filter about what should be serialized and what not. In this case, Jackson should serialize id, age, name, and genre, and not serialize avatar.
+
+Assume the following service-method, which simply fetches the authors older than the given age without their avatars:
+
+```
+public Listauthor fetchAuthorsByAgeGreaterThanEqual(int age) {
+Listauthor authors = authorRepository.findByAgeGreaterThanEqual(age);
+return authors;
+}
+```
+
+There are several approaches for writing and configuring Jackson’s filters. One approach starts by annotating the entity with @JsonFilter as follows (the text between quotes acts as an identifier of this filter used for referencing it later):
+
+```
+@Entity
+@JsonFilter("AuthorId")
+public class Author implements Serializable {
+...
+}
+```
+
+The filter identified via AuthorId is implemented in the BookstoreController, as follows (the important part was highlighted; notice the list of attributes that should be serialized passed to the filterOutAllExcept() method):
+
+```
+@Controller
+public class BookstoreController {
+private final SimpleFilterProvider filterProvider;
+private final BookstoreService bookstoreService;
+public BookstoreController(BookstoreService bookstoreService) {
+this.bookstoreService = bookstoreService;
+filterProvider = new SimpleFilterProvider().addFilter("AuthorId",
+SimpleBeanPropertyFilter.filterOutAllExcept(
+"id", "name", "age", "genre"));
+filterProvider.setFailOnUnknownId(false);
+}
+...
+}
+```
+
+The filter is used in the REST endpoint as follows:
+
+```
+@GetMapping("/authors/{age}")
+public MappingJacksonValue fetchAuthorsByAgeGreaterThanEqual(
+@PathVariable int age) throws JsonProcessingException {
+Listauthor authors = bookstoreService.
+fetchAuthorsByAgeGreaterThanEqual(age);
+MappingJacksonValue wrapper = new MappingJacksonValue(authors);
+wrapper.setFilters(filterProvider);
+return wrapper;
+}
+```
+
+The returned MappingJacksonValue can be serialized as shown in the following JSON:
+
+```
+{
+"id": 1,
+"age": 43,
+"name": "Martin Ticher",
+"genre": "Horror"
+}
+```
+
+This looks good, but the application must also cover the case when the avatar attribute was fetched. Otherwise, Jackson will throw an exception of type, Cannot resolve PropertyFilter with id 'AuthorId'. When the avatar is fetched, it should be serialized as well. Therefore, the filter should serialize all the attributes. Being the default behavior, the filter can be configured globally (at the application-level) to be used for serializing all attributes of the Author entity:
+
+```
+@Configuration
+public class WebConfig extends WebMvcConfigurationSupport {
+@Override
+protected void extendMessageConverters(
+Listhttpmessageconverter<?> converters) {
+for(HttpMessageConverter? converter: converters) {
+if(converter instanceof MappingJackson2HttpMessageConverter) {
+ObjectMapper mapper = ((MappingJackson2HttpMessageConverter)
+converter).getObjectMapper();
+mapper.setFilterProvider(
+new SimpleFilterProvider().addFilter("AuthorId",
+SimpleBeanPropertyFilter.serializeAll()));
+}
+}
+}
+```
+
+}
+
+A REST endpoint that will return a List will rely on this filter that serializes all attributes of Author, including avatar
+
+Jackson has an add-on module for the JSON processor, which handles Hibernate data types and specifically aspects of lazy-loading. This module is identified by the artifact id, jackson-datatype-hibernate5. Unfortunately, so far, this module doesn’t have an effect on lazy loaded attributes. It takes care of lazy loaded associations.
+
+### How to Lazy Load the  Entity Attributes via Subentities
+
+Assume that the application contains the following Author entity. This entity maps an author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+@Lob
+private byte[] avatar;
+private int age;
+private String name;
+private String genre;
+...
+// getters and setters omitted for brevity
+}
+```
+
+This item shows an alternative to the previous solution; therefore, the goal is to load id, age, name, and genre eagerly, and to leads avatar lazily (only on demand). This approach is based on splitting the Author entity into subentities, as shown
+
+![image.png](assets/imagetttty.png)
+
+The class from the center of the above Figure is the base class (this is not an entity and doesn’t have a table in the database), BaseAuthor, and is annotated with @MappedSuperclass. This annotation marks a class whose mapping information is applied to the entities that inherit from it.
+
+So, BaseAuthor should host the attributes that are loaded eagerly (id, age, name, and genre). Each subclass of BaseAuthor is an entity that inherits these attributes; therefore, loading a subclass will load these attributes as well:
+
+```
+@MappedSuperclass
+public class BaseAuthor implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+```
+
+The AuthorShallow is a subentity of BaseAuthor. This subentity inherits the attributes from the superclass. Therefore, all the attributes should be loaded eagerly. It’s important to explicitly map this subentity to the author table via the @Table annotation:
+
+```
+@Entity
+@Table(name = "author")
+public class AuthorShallow extends BaseAuthor {
+}
+```
+
+The AuthorDeep is also a subentity of BaseAuthor. This subentity inherits the attributes from the superclass and defines the avatar as well. The avatar lands in the author table as well by explicitly mapping this subentity via @Table, as follows:
+
+```
+@Entity
+@Table(name = "author")
+public class AuthorDeep extends BaseAuthor {
+@Lob
+private byte[] avatar;
+public byte[] getAvatar() {
+return avatar;
+}
+public void setAvatar(byte[] avatar) {
+this.avatar = avatar;
+}
+}
+```
+
+If subentities are not explicitly mapped to the same table via @Table, then the attributes will land in different tables. Moreover, the inherited attributes will be duplicated.
+
+For example, without @Table(name = "author"), id, name, age, and genre will land in a table named author\_shallow and in a table named author\_deep. On the other hand, the avatar will land only in the author\_deep table. Obviously, this is not good.
+
+At this point, AuthorShallow allows fetching the id, age, name, and genre eagerly, while the AuthorDeep allows fetching these four attributes plus the avatar. In conclusion, the avatar can be loaded on demand.
+
+The next step is quite simple. Just provide the classical Spring repositories for these two subentities as follows:
+
+```
+@Repository
+public interface AuthorShallowRepository
+extends JpaRepositoryauthorshallow, {
+}
+@Repository
+public interface AuthorDeepRepository
+extends JpaRepositoryauthordeep, {
+}
+```
+
+Calling findAll() from AuthorShallowRepository will trigger the following SQL (notice that the avatar is not loaded):
+
+```
+SELECT
+authorshal0_.id AS id1_0_,
+authorshal0_.age AS age2_0_,
+authorshal0_.genre AS genre3_0_,
+authorshal0_.name AS name4_0_
+FROM author authorshal0_
+```
+
+Calling findAll() from AuthorDeepRepository will trigger the following SQL (notice that the avatar is loaded):
+
+```
+SELECT
+authordeep0_.id AS id1_0_,
+authordeep0_.age AS age2_0_,
+authordeep0_.genre AS genre3_0_,
+authordeep0_.name AS name4_0_,
+authordeep0_.avatar AS avatar5_0_
+FROM author authordeep0_
+```
+
+At this point, a conclusion starts to take shape. Hibernate supports attributes to be lazily loaded, but this requires Bytecode Enhancement and needs to deal with the Open Session in View and Jackson serialization issues. On the other hand, using subentities might be a better alternative, since it doesn’t require Bytecode Enhancement and doesn’t encounter these issues.
+
+### How to Fetch DTO via Spring Projections
+
+Fetching data from the database results in a copy of that data in memory (usually referred to as the result set or JDBC result set). This zone of memory that holds the fetched result set is known and referred to as the Persistence Context or the First Level Cache or simply the Cache. By default, Hibernate operates in readwrite mode. This means that the fetched result set is stored in the Persistence Context as Object[] (more precisely, as Hibernate-specific EntityEntry instances), and is known in Hibernate terminology as the hydrated state, and as entities built from this hydrated state.
+
+The hydrated state serves the Dirty Checking mechanism (at flush time, Hibernate compares the entities against the hydrated state to discover the potential changes/modifications and triggers UPDATE statements on your behalf), the Versionless Optimistic Locking mechanism (for building the WHERE clause), and the Second Level Cache (the cached entries are built from the disassembled hydrated state, or more precisely, from Hibernate-specific CacheEntry instances built from the hydrated state that was first disassembled).
+
+In other words, after the fetching operation, the fetched result set lives outside the database, in memory. The application accesses/manages this data via entities (so, via Java objects), and, to facilitate this context, Hibernate applies several specific techniques that transform the fetched raw data (JDBC result set) into the hydrated state (this process is known as hydration) and further into the manageable representation (entities).
+
+This is a good reason for NOT fetching data as entities in read-write mode if there is no plan to modify them.
+
+In such a scenario, the read-write data will consume memory and CPU resources for nothing. This adds serious performance penalties to the application. Alternatively, if you need read-only entities then switch to read-only mode (e.g., in Spring, use readOnly element, @Transactional(readOnly=true)). This will instruct Hibernate to discard the hydrated state from memory
+
+Moreover, there will be no automatic flush time and no Dirty Checking. Only entities remain in the Persistence Context. As a consequence, this will save memory and CPU resources (e.g., CPU cycles).
+
+Read-only entities still mean that you plan to modify them at some point in the near future as well (e.g., you don’t plan to modify them in the current Persistence Context, but they will be modified in the detached state and merged later in another Persistence Context).
+
+This is a good reason for NOT fetching data as entities in read-only mode if you never plan to modify them.
+
+However, as an exception here, you can consider read-only entities as an alternative to DTOs that mirror the entity (contains all columns).
+
+As a rule of thumb, if all you need is read-only data that it will not be modified then use Data Transfer Object (DTO) to represent read-only data as Java objects.
+
+Most of the time, DTOs contain only a subset of entity attributes and this way you avoid fetching more data (columns) than needed. Don’t forget that, besides skipping the unneeded columns, you should consider limiting the number of fetched rows via LIMIT or its counterparts.
+
+For a variety of reasons, some voices will tell you to fetch entities only to use a converter/mapper to create DTOs. Before deciding, consider reading the Vlad Mihalcea’s tweet11 that also argues against this anti-pattern. Vlad says: “Don’t fetch entities, only to use a mapper to create DTOs. That’s very inefficient, yet I keep on seeing this anti-pattern being promoted.”
+
+DTO and Spring projections have essentially the same purpose. Martin Folwer defines a DTO as “an object that carries data between processes in order to reduce the number of method calls”. At the implementation level, DTO and Spring projections are not the same.
+
+DTO relies on classes with constructor and getters/setters, while Spring projections rely on interfaces and automatically generated proxies. However, Spring can rely on classes as well and the result is known as DTO projection.
+
+Assume that we have the following Author entity. This entity maps an author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
+public interface AuthorRepository extends JpaRepositoryauthor,
+{
+@Transactional(readOnly = true)
+Listauthornameage findFirst2ByGenre(String genre);
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+```
+
+The goal is to fetch only the name and age of the two authors having the same genre. This time, the application relies on Spring projections.
+
+A Spring projection may debut with a Java interface that contains getters only for the columns that should be fetched from the database (e.g., name and age).
+
+This type of Spring projection is known as an interface-based closed projection (methods defined in this kind of projection exactly match the names of the entity properties):
+
+```
+public interface AuthorNameAge {
+String getName();
+int getAge();
+}
+```
+
+Behind the scenes, Spring generates a proxy instance of the projection interface for each entity object. Further, the calls to the proxy are automatically forwarded to that object.
+
+The projection interface can be declared as an inner interface of the repository interface as well. It can be declared static or non-static, as in the following example:
+
+```
+@Repository
+public interface AuthorRepository extends JpaRepositoryauthor,
+{
+@Transactional(readOnly = true)
+Listauthornameage findFirst2ByGenre(String genre);
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+public interface AuthorNameAge {
+String getName();
+int getAge();
+}
+}
+```
+
+The proper query for fetching only two authors in this projection is (take advantage of the Spring Data Query Builder mechanism or rely on JPQL or native SQL):
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepositoryauthor, {
+Listauthornameage findFirst2ByGenre(String genre);
+}
+```
+
+Notice that this query returns a List not a List. Calling this method for the given genre will trigger the following SQL:
+
+```
+SELECT
+author0_.name AS col_0_0_,
+author0_.age AS col_1_0_
+FROM author author0_
+WHERE author0_.genre=?
+LIMIT ?
+```
+
+The fetched data can be manipulated via the projection getters, as in this simple example:
+
+```
+Listauthornameage authors = ...;
+for (AuthorNameAge author : authors) {
+```
+
+Using projections is not limited to using the Query Builder mechanism built into the Spring Data repository infrastructure. Fetching projections via JPQL or native SQL queries is an option as well. For example, the previous query can be written via a native SQL query as follows:
+
+@Query(value = "SELECT a.name, a.age FROM author a  WHERE a.genre=?1 LIMIT 2", nativeQuery=true)
+
+When the names of the columns doesn’t correspond to the name of the entity’s attributes then simply rely on the SQL AS keyword to define the corresponding aliases. For example, if the name attribute is mapped to the author\_name column and the age attribute is mapped to the author\_age column then a native SQL query will be as follows:
+
+```
+@Query(value = "SELECT a.author\_name AS name, a.author\_age AS age  FROM author a WHERE a.genre=?1 LIMIT 2",  nativeQuery=true)
+```
+
+#### JPA Named (Native) Queries Can Be Combined with Spring Projections
+
+Say you have a bunch of named queries in your project and you want to take advantage of Spring Projection. Here is a sample of accomplishing this task. First, you define two named queries and their native counterparts using the @NamedQuery and @NamedNativeQuery annotations. The first query, Author.fetchName, represents a scalar mapping to `List<String>`, while the second query, Author.fetchNameAndAge, represents a Spring projection mapping to `List<AuthorNameAge>`:
+
+```
+@NamedQuery(
+name = "Author.fetchName",
+query = "SELECT a.name FROM Author a"
+)
+@NamedQuery(
+name = "Author.fetchNameAndAge",
+query = "SELECT a.age AS age, a.name AS name FROM Author a"
+)
+@Entity
+public class Author implements Serializable {
+...
+}
+```
+
+```
+span
+```
+
+Or, you could define the same queries via a jpa-named-queries.properties file (this is the recommended way for taking advantage of dynamic sort (Sort) in named queries that are not native) and Sort in Pageable (in both, named queries and named native queries):
+
+```
+# Find the names of authors
+Author.fetchName=SELECT a.name FROM Author a
+```
+
+```
+# Find the names and ages of authors
+Author.fetchNameAndAge=SELECT a.age AS age, a.name AS name FROM Author a
+```
+
+And their native counterparts:
+
+```
+# Find the names of authors
+Author.fetchName=SELECT name FROM author
+```
+
+```
+# Find the names and ages of authors
+```
+
+Or, you can define the same queries via the orm.xml file (notice that this approach has the same shortcomings as using @NamedQuery and @NamedNativeQuery):
+
+```
+<!-- Find the names of authors -->
+<named-query name="Author.fetchName">
+ <query>SELECT a.name FROM Author a</query>
+</named-query>
+```
+
+```
+<!-- Find the names and ages of authors -->
+<named-query name="Author.fetchNameAndAge">
+ <query>SELECT a.age AS age, a.name AS name FROM Author a</query>
+</named-query>
+```
+
+And their native counterparts:
+
+```
+<!-- Find the names of authors -->
+<named-native-query name="Author.fetchName">
+ <query>SELECT name FROM author</query>
+</named-native-query>
+```
+
+```
+<!-- Find the names and ages of authors -->
+<named-native-query name="Author.fetchNameAndAge">
+ <query>SELECT age, name FROM author</query>
+</named-native-query>
+```
+
+Independent of which approach you prefer, the AuthorRepository is the same:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+// Scalar Mapping
+List<String> fetchName();
+// Spring projection
+List<AuthorNameAge> fetchNameAndAge();
+}
+```
+
+Or the native counterpart:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ // Scalar Mapping
+ @Query(nativeQuery = true)
+ List<String> fetchName();
+ // Spring projection
+ @Query(nativeQuery = true)
+ List<AuthorNameAge> fetchNameAndAge();
+}
+```
+
+That’s all! Spring Boot will automatically do the rest for you. Depending on how the
+named (native) queries are provided, you can choose from the following applications:
+
+1. How to use JPA named queries via @NamedQuery and Spring projection
+2. How to use JPA named native queries via @NamedNativeQuery and Spring projection
+3. How to use JPA named queries via a properties file and Spring projection
+4. How to use JPA named native queries via a properties file and Spring projection
+5. How to use JPA named queries via the orm.xml file and Spring projection
+6. How to use JPA named native queries via the orm.xml file and Spring projection
+
+#### Class-Based Projections
+Besides interface-based projections, Spring supports class-based projections. This time,
+instead of an interface, you write a class. For example, the AuthorNameAge interface
+becomes the AuthorNameAge class from the following
+
+```
+public class AuthorNameAge {
+ private String name;
+ private int age;
+ public AuthorNameAge(String name, int age) {
+ this.name = name;
+ this.age = age;
+ }
+ // getters, setters, equals() and hashCode() omitted for brevity
+}
+```
+As you can see, the names of the constructor's arguments must match the entity properties.
+
+Notice that interface-based projections can be nested, while class-based
+projections cannot
+
+#### How to Reuse a Spring Projection
+
+This time, consider that we’ve enriched the Author entity to contain the following
+attributes: id, name, genre, age, email, address, and rating. Or, generally speaking,
+an entity with a large number of attributes. When an entity has a significant number of
+attributes, we potentially need a bunch of read-only queries to fetch different subsets of
+attributes. For example, a read-only query may need to fetch the age, name, genre, email,
+and address, while another query may need to fetch the age name and genre, and yet
+another query may need to fetch only the name and email.
+
+To satisfy these three queries, we may define three interface-based Spring closed
+projections. This is not quite practical. For example, later, we may need one more readonly query that fetches the name and address. Following this logic, we need to define
+one more Spring projection as well. It will be more practical to define a single Spring
+projection that works for all read-only queries executed against the authors.
+
+To accomplish this task, we define a Spring projection that contains getters to satisfy
+the heaviest query (in this case, the query that fetches the age, name, genre, email, and
+address):
+
+```
+@JsonInclude(JsonInclude.Include.NON_DEFAULT)
+public interface AuthorDto {
+ public Integer getAge();
+ public String getName();
+ public String getGenre();
+ public String getEmail();
+ public String getAddress();
+}
+```
+
+The projection was annotated with @JsonInclude(JsonInclude.Include.NON_
+DEFAULT). This is needed to avoid serializing null values (values that haven’t been
+fetched in the current query). This will instruct the Jackson serialization mechanism to
+skip null values from the resulted JSON.
+Now, we can rely on Spring Data Query Builder mechanism to generate the query for
+fetching the age, name, genre, email, and address as follows:
+
+List<AuthorDto> findBy();
+
+Or, you can write a JPQL as follows:
+
+```
+@Query("SELECT a.age AS age, a.name AS name, a.genre AS genre, "
+ + "a.email AS email, a.address AS address FROM Author a")
+List<AuthorDto> fetchAll();
+```
+Calling fetchAll() and representing the result as JSON will produce the following:
+
+```
+[
+ {
+ "genre":"Anthology",
+ "age":23,
+ "email":"markj@gmail.com",
+ "name":"Mark Janel",
+ "address":"mark's address"
+ },
+ ...
+]
+```
+Further, you can reuse the AuthorDto projection for a query that fetches only the age,
+name, and genre:
+
+```
+@Query("SELECT a.age AS age, a.name AS name, a.genre AS genre FROM Author a")
+List<AuthorDto> fetchAgeNameGenre();
+```
+Calling fetchAgeNameGenre() and representing the result as JSON will produce
+something as follows:
+
+```
+ {
+ "genre":"Anthology",
+ "age":23,
+ "name":"Mark Janel"
+ },
+ ...
+]
+```
+Or, you can reuse the AuthorDto projection for a query that fetches only the name and email:
+
+```
+@Query("SELECT a.name AS name, a.email AS email FROM Author a")
+List<AuthorDto> fetchNameEmail();
+```
+Calling fetchNameEmail() and representing the result as JSON will produce something
+as follows:
+
+```
+[
+ {
+ "email":"markj@gmail.com",
+ "name":"Mark Janel"
+ },
+ ...
+]
+```
+
+#### How to Use Dynamic Spring Projections
+
+Consider the Author entity from the previous section, which has the following attributes:
+id, name, genre, age, email, address, and rating. Moreover, consider two Spring
+projections for this entity, defined as follows:
+
+```
+public interface AuthorGenreDto {
+ public String getGenre();
+}
+```
+
+```
+public interface AuthorNameEmailDto {
+ public String getName();
+ public String getEmail();
+}
+```
+You can fetch the entity type, AuthorGenreDto type, and AuthorNameEmailDto type via
+the same query-method by writing three queries, as shown here:
+
+```
+Author findByName(String name);
+AuthorGenreDto findByName(String name);
+AuthorNameEmailDto findByName(String name);
+```
+
+You essentially write the same query-method to return different types. This is somehow
+cumbersome, and Spring tackles such cases via dynamic projections. You can apply
+dynamic projections just by declaring a query-method with a Class parameter, as follows:
+
+``<T> T findByName(String name, Class<T> type);``
+
+Here are two more examples:
+
+```
+<T> List<T> findByGenre(String genre, Class<T> type);
+@Query("SELECT a FROM Author a WHERE a.name=?1 AND a.age=?2")
+<T> T findByNameAndAge(String name, int age, Class<T> type);
+```
+This time, depending on the type that you expect to be returned, you can call
+findByName() as follows:
+
+```
+Author author = authorRepository.findByName(
+ "Joana Nimar", Author.class);
+AuthorGenreDto author = authorRepository.findByName(
+ "Joana Nimar", AuthorGenreDto.class);
+AuthorNameEmailDto author = authorRepository.findByName(
+ "Joana Nimar", AuthorNameEmailDto.class);
+```

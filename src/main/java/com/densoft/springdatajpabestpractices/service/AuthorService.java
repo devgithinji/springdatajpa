@@ -1,12 +1,20 @@
 package com.densoft.springdatajpabestpractices.service;
 
+import com.densoft.springdatajpabestpractices.dto.AuthorDto;
 import com.densoft.springdatajpabestpractices.model.Author;
 import com.densoft.springdatajpabestpractices.model.Book;
 import com.densoft.springdatajpabestpractices.repository.AuthorRepo;
 import com.densoft.springdatajpabestpractices.repository.BookRepo;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.AuthorGenreDto;
+import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.AuthorNameEmailDto;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +29,8 @@ public class AuthorService {
                 .name("Joana Nimar")
                 .age(34)
                 .genre("History")
+                .email("test@gmail.com")
+                .address("limuru")
                 .addBook(new Book()
                         .title("A History of Ancient Prague")
                         .isbn("001-JN"))
@@ -31,21 +41,50 @@ public class AuthorService {
         log.info("created author: {}", author);
     }
 
-    public void addBookToAuthor() {
-//        assuming we have existing author
-//        Author proxy = authorRepo.getOne(1L);
-//        getOne deprecated
-        Author proxy = authorRepo.getReferenceById(1L);
+    public void fetchAll() {
+        List<AuthorDto> authorDto = authorRepo.fetchAll();
+        System.out.println(listToString(authorDto));
+    }
+
+    public void fetchAgeNameGenre() {
+        List<AuthorDto> authorDto = authorRepo.fetchAgeNameGenre();
+        System.out.println(listToString(authorDto));
+    }
+
+    public void fetchNameAndEmail() {
+        List<AuthorDto> authorDto = authorRepo.fetchNameEmail();
+        System.out.println(listToString(authorDto));
+    }
+
+    public void fetchByName() {
+        Author author = authorRepo.findByName("Joana Nimar", Author.class);
+        AuthorGenreDto author2 = authorRepo.findByName(
+                "Joana Nimar", AuthorGenreDto.class);
+
+        AuthorNameEmailDto author3 = authorRepo.findByName(
+                "Joana Nimar", AuthorNameEmailDto.class);
+
+        ObjectMapper mapper = new ObjectMapper();
         try {
-            Book book = new Book();
-            book.setIsbn("001-MJ");
-            book.setTitle("The Canterbury Anthology");
-            book.setAuthor(proxy);
-            bookRepo.save(book);
-        } catch (Exception e) {
-
-            log.error("error: " + e.getMessage(), e);
+            System.out.println(mapper.writeValueAsString(author));
+            System.out.println(mapper.writeValueAsString(author2));
+            System.out.println(mapper.writeValueAsString(author3));
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+            // Handle the exception according to your needs
+            log.error("Error converting to JSON");
         }
+    }
 
+
+    public static String listToString(List<AuthorDto> authorDtoList) {
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            return mapper.writeValueAsString(authorDtoList);
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+            // Handle the exception according to your needs
+            return "Error converting to JSON";
+        }
     }
 }

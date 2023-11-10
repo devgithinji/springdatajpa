@@ -1,5 +1,7 @@
 package com.densoft.springdatajpabestpractices.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,6 +14,7 @@ import java.util.List;
 @Entity
 @Getter
 @Setter
+
 public class Author implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
@@ -20,11 +23,11 @@ public class Author implements Serializable {
     private Long id;
 
     private String name;
-    @Basic(fetch = FetchType.LAZY)
+    private String email;
     private String genre;
-    @Basic(fetch = FetchType.LAZY)
+    private String address;
     private int age;
-
+    @JsonIgnore
     @OneToMany(cascade = CascadeType.ALL,
             mappedBy = "author", orphanRemoval = true)
     private List<Book> books = new ArrayList<>();
@@ -56,10 +59,21 @@ public class Author implements Serializable {
         return this;
     }
 
+    public Author email(String email) {
+        this.email = email;
+        return this;
+    }
+
+    public Author address(String address) {
+        this.address = address;
+        return this;
+    }
+
     public Author age(int age) {
         this.age = age;
         return this;
     }
+
     public Author books(List<Book> books) {
         this.books = books;
         return this;
