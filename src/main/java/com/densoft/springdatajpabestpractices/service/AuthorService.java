@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.AuthorGenreDto;
+import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.AuthorNameEmailDto;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -51,6 +54,26 @@ public class AuthorService {
     public void fetchNameAndEmail() {
         List<AuthorDto> authorDto = authorRepo.fetchNameEmail();
         System.out.println(listToString(authorDto));
+    }
+
+    public void fetchByName() {
+        Author author = authorRepo.findByName("Joana Nimar", Author.class);
+        AuthorGenreDto author2 = authorRepo.findByName(
+                "Joana Nimar", AuthorGenreDto.class);
+
+        AuthorNameEmailDto author3 = authorRepo.findByName(
+                "Joana Nimar", AuthorNameEmailDto.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            System.out.println(mapper.writeValueAsString(author));
+            System.out.println(mapper.writeValueAsString(author2));
+            System.out.println(mapper.writeValueAsString(author3));
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+            // Handle the exception according to your needs
+            log.error("Error converting to JSON");
+        }
     }
 
 

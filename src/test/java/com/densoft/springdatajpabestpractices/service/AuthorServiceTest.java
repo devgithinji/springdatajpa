@@ -30,4 +30,9 @@ class AuthorServiceTest {
     void fetchNameAndEmail() {
         authorService.fetchNameAndEmail();
     }
+
+    @Test
+    void fetchByName() {
+        authorService.fetchByName();
+    }
 }

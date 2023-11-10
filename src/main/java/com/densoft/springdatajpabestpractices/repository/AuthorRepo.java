@@ -4,10 +4,8 @@ import com.densoft.springdatajpabestpractices.dto.AuthorDto;
 import com.densoft.springdatajpabestpractices.model.Author;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -20,26 +18,33 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
     List<Author> findByAge(int age);
 
     List<AuthorDto> findBy();
+
     //fetch all data
     @Query("SELECT a.age AS age, a.name AS name, a.genre AS genre, "
             + "a.email AS email, a.address AS address FROM Author a")
     List<AuthorDto> fetchAll();
+
     //fetch age, name and genre
     @Query("SELECT a.age AS age, a.name AS name, a.genre AS genre FROM Author a")
     List<AuthorDto> fetchAgeNameGenre();
+
     //    fetch name and email
     @Query("SELECT a.name AS name, a.email AS email FROM Author a")
     List<AuthorDto> fetchNameEmail();
-    @Transactional
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("DELETE FROM Author a WHERE a.id = ?1")
-    int deleteByIdentifier(Long id);
 
+//    spring dynamic projections
+    <T> T findByName(String name, Class<T> type);
+    <T> List<T> findByGenre(String genre, Class<T> type);
+    @Query("SELECT a FROM Author a WHERE a.name=?1 AND a.age=?2")
+    <T> T findByNameAndAge(String name, int age, Class<T> type);
 
-    @Transactional
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("DELETE FROM Author a WHERE a.id IN ?1")
-    int deleteBulkByIdentifier(List<Long> id);
+    interface AuthorGenreDto {
+        String getGenre();
+    }
 
+    interface AuthorNameEmailDto {
+        String getName();
+        String getEmail();
+    }
 
 }
