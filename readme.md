@@ -4271,3 +4271,120 @@ SimpleBeanPropertyFilter.serializeAll()));
 A REST endpoint that will return a List will rely on this filter that serializes all attributes of Author, including avatar
 
 Jackson has an add-on module for the JSON processor, which handles Hibernate data types and specifically aspects of lazy-loading. This module is identified by the artifact id, jackson-datatype-hibernate5. Unfortunately, so far, this module doesn’t have an effect on lazy loaded attributes. It takes care of lazy loaded associations.
+
+### How to Lazy Load the  Entity Attributes via Subentities
+
+Assume that the application contains the following Author entity. This entity maps an author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+@Lob
+private byte[] avatar;
+private int age;
+private String name;
+private String genre;
+...
+// getters and setters omitted for brevity
+}
+```
+
+This item shows an alternative to the previous solution; therefore, the goal is to load id, age, name, and genre eagerly, and to leads avatar lazily (only on demand). This approach is based on splitting the Author entity into subentities, as shown
+
+![image.png](assets/imagetttty.png)
+
+
+The class from the center of the above Figure is the base class (this is not an entity and doesn’t have a table in the database), BaseAuthor, and is annotated with @MappedSuperclass. This annotation marks a class whose mapping information is applied to the entities that inherit from it.
+
+So, BaseAuthor should host the attributes that are loaded eagerly (id, age, name, and genre). Each subclass of BaseAuthor is an entity that inherits these attributes; therefore, loading a subclass will load these attributes as well:
+
+
+```
+@MappedSuperclass
+public class BaseAuthor implements Serializable {
+private static final long serialVersionUID = 1L;
+@Id
+private Long id;
+private int age;
+private String name;
+private String genre;
+// getters and setters omitted for brevity
+}
+```
+
+The AuthorShallow is a subentity of BaseAuthor. This subentity inherits the attributes from the superclass. Therefore, all the attributes should be loaded eagerly. It’s important to explicitly map this subentity to the author table via the @Table annotation:
+
+```
+@Entity
+@Table(name = "author")
+public class AuthorShallow extends BaseAuthor {
+}
+```
+
+
+The AuthorDeep is also a subentity of BaseAuthor. This subentity inherits the attributes from the superclass and defines the avatar as well. The avatar lands in the author table as well by explicitly mapping this subentity via @Table, as follows:
+
+
+```
+@Entity
+@Table(name = "author")
+public class AuthorDeep extends BaseAuthor {
+@Lob
+private byte[] avatar;
+public byte[] getAvatar() {
+return avatar;
+}
+public void setAvatar(byte[] avatar) {
+this.avatar = avatar;
+}
+}
+```
+
+If subentities are not explicitly mapped to the same table via @Table, then the attributes will land in different tables. Moreover, the inherited attributes will be duplicated.
+
+For example, without @Table(name = "author"), id, name, age, and genre will land in a table named author\_shallow and in a table named author\_deep. On the other hand, the avatar will land only in the author\_deep table. Obviously, this is not good.
+
+At this point, AuthorShallow allows fetching the id, age, name, and genre eagerly, while the AuthorDeep allows fetching these four attributes plus the avatar. In conclusion, the avatar can be loaded on demand.
+
+
+The next step is quite simple. Just provide the classical Spring repositories for these two subentities as follows:
+
+```
+@Repository
+public interface AuthorShallowRepository
+extends JpaRepositoryauthorshallow, {
+}
+@Repository
+public interface AuthorDeepRepository
+extends JpaRepositoryauthordeep, {
+}
+```
+
+Calling findAll() from AuthorShallowRepository will trigger the following SQL (notice that the avatar is not loaded):
+
+```
+SELECT
+authorshal0_.id AS id1_0_,
+authorshal0_.age AS age2_0_,
+authorshal0_.genre AS genre3_0_,
+authorshal0_.name AS name4_0_
+FROM author authorshal0_
+```
+
+Calling findAll() from AuthorDeepRepository will trigger the following SQL (notice that the avatar is loaded):
+
+```
+SELECT
+authordeep0_.id AS id1_0_,
+authordeep0_.age AS age2_0_,
+authordeep0_.genre AS genre3_0_,
+authordeep0_.name AS name4_0_,
+authordeep0_.avatar AS avatar5_0_
+FROM author authordeep0_
+```
+
+
+At this point, a conclusion starts to take shape. Hibernate supports attributes to be lazily loaded, but this requires Bytecode Enhancement and needs to deal with the Open Session in View and Jackson serialization issues. On the other hand, using subentities might be a better alternative, since it doesn’t require Bytecode Enhancement and doesn’t encounter these issues.
