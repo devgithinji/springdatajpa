@@ -4792,3 +4792,131 @@ AuthorGenreDto author = authorRepository.findByName(
 AuthorNameEmailDto author = authorRepository.findByName(
  "Joana Nimar", AuthorNameEmailDto.class);
 ```
+### How to Add an Entity in a Spring Projection
+Typically, a Spring projection (DTO) is used to fetch read-only data. But there might be
+cases when the application needs to fetch an entity inside the Spring Projection. For
+such cases, the steps that need to be followed are highlighted in this example.
+
+#### Materialized Association
+Consider the Author and Book entities involved in a bidirectional lazy @OneToMany association.
+The Spring projection should map the Author entity and, from the Book entity, only
+the title attribute. Based on the previous item, the Spring projection interface can be
+written as follows:
+
+```
+public interface BookstoreDto {
+ public Author getAuthor();
+ public String getTitle();
+}
+```
+
+Fetching data is accomplished in the following repository via JPQL (the fetched data
+lands in a List<BookstoreDto>):
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a AS author, b.title AS title
+ FROM Author a JOIN a.books b")
+ List<BookstoreDto> fetchAll();
+}
+```
+Calling this method will trigger the following SQL:
+
+```
+SELECT
+ author0_.id AS col_0_0_,
+ books1_.title AS col_1_0_,
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+```
+The following service-method calls fetchAll() in a read-write transaction. Notice that
+the fetched Author instances are managed by Hibernate and the potential changes will
+be propagated to the database via the Dirty Checking mechanism (Hibernate will trigger
+UPDATE statements on your behalf):
+
+```
+@Transactional
+public List<BookstoreDto> fetchAuthors() {
+ List<BookstoreDto> dto = authorRepository.fetchAll();
+ // the fetched Author are managed by Hibernate
+ // the following line of code will trigger an UPDATE
+ dto.get(0).getAuthor().setGenre("Poetry");
+ return dto;
+}
+```
+Displaying the fetched data to the console is quite simple:
+
+```
+List<BookstoreDto> authors = ...;
+authors.forEach(a -> System.out.println(a.getAuthor()
+ + ", Title: " + a.getTitle()));
+```
+
+#### Not Materialized Association
+
+This time, consider that there is no materialized association between the Author and
+Book entities.
+
+![non materialized association](assets/imgdsfsf.png)
+
+both entities share a genre attribute.
+This attribute can be used to join Author with Book and fetch the data in the same Spring
+projection, BookstoreDto. This time, the JPQL uses the genre attribute in order to join
+these two tables as follows:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a AS author, b.title AS title FROM Author a
+ JOIN Book b ON a.genre=b.genre ORDER BY a.id")
+ List<BookstoreDto> fetchAll();
+}
+```
+Calling fetchAll() will trigger the following SQL:
+
+```
+SELECT
+ author0_.id AS col_0_0_,
+ book1_.title AS col_1_0_,
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+INNER JOIN book book1_
+ ON (author0_.genre = book1_.genre)
+ORDER BY author0_.id
+```
+
+The following service-method calls fetchAll() in a read-write transaction. Notice that
+the fetched Authors are managed and Hibernate will propagate to the database the
+modifications of these Authors:
+
+```
+@Transactional
+public List<BookstoreDto> fetchAuthors() {
+ List<BookstoreDto> dto = authorRepository.fetchAll();
+ // the fetched Author are managed by Hibernate
+ // the following line of code will trigger an UPDATE
+ dto.get(0).getAuthor().setAge(47);
+ return dto;
+}
+```
+
+Displaying the fetched data to the console is quite simple:
+
+```
+List<BookstoreDto> authors = ...;
+authors.forEach(a -> System.out.println(a.getAuthor()
+ + ", Title: " + a.getTitle()));
+```
+
+
