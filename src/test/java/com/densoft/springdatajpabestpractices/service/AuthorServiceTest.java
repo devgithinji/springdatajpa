@@ -35,4 +35,9 @@ class AuthorServiceTest {
     void fetchByName() {
         authorService.fetchByName();
     }
+
+    @Test
+    void fetchByAge() {
+        authorService.fetchByAge();
+    }
 }

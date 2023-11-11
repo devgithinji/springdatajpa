@@ -13,8 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.AuthorGenreDto;
-import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.AuthorNameEmailDto;
+import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.*;
 
 @Service
 @RequiredArgsConstructor
@@ -77,7 +76,19 @@ public class AuthorService {
     }
 
 
-    public static String listToString(List<AuthorDto> authorDtoList) {
+    public void fetchByAge() {
+        List<AuthorNameAge> authorNameAges = authorRepo.fetchByAge(20);
+        for (AuthorNameAge author : authorNameAges) {
+            System.out.println("Author name: " + author.getName()
+                    + " | Age: " + author.years()
+                    + " | Rank: " + author.rank()
+                    + " | Books: " + author.books());
+        }
+        System.out.println(listToString(authorNameAges));
+    }
+
+
+    public static <T> String listToString(List<T> authorDtoList) {
         ObjectMapper mapper = new ObjectMapper();
         try {
             return mapper.writeValueAsString(authorDtoList);

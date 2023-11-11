@@ -2,6 +2,7 @@ package com.densoft.springdatajpabestpractices.repository;
 
 import com.densoft.springdatajpabestpractices.dto.AuthorDto;
 import com.densoft.springdatajpabestpractices.model.Author;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -32,11 +33,16 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
     @Query("SELECT a.name AS name, a.email AS email FROM Author a")
     List<AuthorDto> fetchNameEmail();
 
-//    spring dynamic projections
+    //    spring dynamic projections
     <T> T findByName(String name, Class<T> type);
+
     <T> List<T> findByGenre(String genre, Class<T> type);
+
     @Query("SELECT a FROM Author a WHERE a.name=?1 AND a.age=?2")
     <T> T findByNameAndAge(String name, int age, Class<T> type);
+
+    @Query("SELECT a.name AS name, a.age AS age FROM Author a WHERE a.age>=?1")
+    List<AuthorNameAge> fetchByAge(int age);
 
     interface AuthorGenreDto {
         String getGenre();
@@ -44,7 +50,21 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
 
     interface AuthorNameEmailDto {
         String getName();
+
         String getEmail();
+    }
+
+    interface AuthorNameAge {
+        String getName();
+
+        @Value("#{target.age}")
+        String years();
+
+        @Value("#{ T(java.lang.Math).random() * 10000 }")
+        int rank();
+
+        @Value("5")
+        String books();
     }
 
 }

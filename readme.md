@@ -4919,4 +4919,74 @@ authors.forEach(a -> System.out.println(a.getAuthor()
  + ", Title: " + a.getTitle()));
 ```
 
+### How to Enrich Spring Projections with Virtual Properties That Are/Aren’t Part of Entities
+
+Spring projections can be enriched with virtual properties that are or are not part of
+the Domain Model. Commonly, when they are not part of the Domain Model, they are
+computed at runtime via SpEL expressions.
+
+An interface-based Spring projection that contains methods with unmatched names in
+the Domain Model and with returns computed at runtime is referenced as an interfacebased open projection.
+
+For example, the following Spring projection contains three virtual properties (years,
+rank, and books):
+
+```
+public interface AuthorNameAge {
+ String getName();
+ @Value("#{target.age}")
+ String years();
+ @Value("#{ T(java.lang.Math).random() * 10000 }")
+ int rank();
+ @Value("5")
+ String books();
+}
+```
+
+In the Spring projection, AuthorNameAge relies on @Value and Spring SpEL to point to a
+backing property from the Domain Model (in this case, the Domain Model property age
+is exposed via the virtual property years). Moreover, use the @Value and Spring SpEL
+to enrich the result with two virtual properties that don’t have a match in the Domain
+Model (in this case, rank and books).
+
+The Spring repository is pretty simple and it contains a query that fetches the author
+name and age older than the given age:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a.name AS name, a.age AS age
+ FROM Author a WHERE a.age >= ?1")
+ List<AuthorNameAge> fetchByAge(int age);
+}
+```
+
+Calling fetchByAge() for the given age will trigger the following SQL:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.age AS col_1_0_
+FROM author author0_
+WHERE author0_.age >= ?
+```
+Printing the fetched data uses years() for age, rank(), and books():
+
+```
+List<AuthorNameAge> authors = ...;
+for (AuthorNameAge author : authors) {
+ System.out.println("Author name: " + author.getName()
+ + " | Age: " + author.years()
+ + " | Rank: " + author.rank()
+ + " | Books: " + author.books());
+}
+```
+
+An output to the console is (author’s name and age have been fetched from the database):
+
+Author name: Olivia Goy | Age: 43 | Rank: 3435 | Books: 5
+Author name: Quartis Young | Age: 51 | Rank: 2371 | Books: 5
+Author name: Katy Loin | Age: 56 | Rank: 2826 | Books: 5
+
 
