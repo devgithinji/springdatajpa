@@ -5109,3 +5109,86 @@ public interface BookRepository extends JpaRepository<Book, Long> {
  List<BookDto> findByViaQuery();
 }
 ```
+#### Using a Simple Closed Projection
+Relying on nested Spring projection can lead to performance penalties. How about using
+a simple Spring closed projection that fetches raw data as follows:
+
+```
+public interface SimpleBookDto {
+ public String getTitle(); // of book
+ public String getName(); // of author
+ public String getGenre(); // of author
+}
+```
+
+This time the Query Builder mechanism cannot help you. You can write a LEFT JOIN as
+follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ @Query("SELECT b.title AS title, a.name AS name, a.genre AS genre "
+ + "FROM Book b LEFT JOIN b.author a")
+ List<SimpleBookDto> findByViaQuerySimpleDto();
+}
+```
+
+This time, the JSON representation of the result set looks as follows:
+
+```
+[
+ {
+ "title":"A History of Ancient Prague",
+ "genre":"History",
+ "name":"Joana Nimar"
+ },
+Chapter 3 Fetching
+191
+ {
+ "title":"A People's History",
+ "genre":"History",
+ "name":"Joana Nimar"
+ },
+ ...
+]
+```
+The books and authors data is mixed. Depending on the case, this kind of output can be
+accepted (as in this case) or not. But how efficient is it? Let’s look at the triggered SQL:
+
+```
+SELECT
+ book0_.title AS col_0_0_,
+ author1_.name AS col_1_0_,
+ author1_.genre AS col_2_0_
+FROM book book0_
+LEFT OUTER JOIN author author1_
+ ON book0_.author_id = author1_.id
+```
+
+The query looks exactly as expected. Notice that this query fetches only the requested
+columns. Further, the Persistence Context is empty. Here is the Persistence Context
+content:
+
+Total number of managed entities: 0
+Total number of collection entries: 0
+
+From a performance perspective, this approach is better than relying on nested
+Spring projections. The SQL fetches only the requested columns and the
+Persistence Context is bypassed.
+
+The drawback is in data representation (raw
+data), which doesn’t maintain the tree structure of parent-child entities.
+
+In some
+cases, this is not an issue; in other cases, it is.
+
+You have to process this data to be
+shaped as needed (on the server-side or client-side). When no further processing
+is needed, you can even drop the projection and return List<Object[]>:
+
+```
+@Query("SELECT b.title AS title, a.name AS name, a.genre AS genre "
+ + "FROM Book b LEFT JOIN b.author a")
+List<Object[]> findByViaQueryArrayOfObjects();
+```
