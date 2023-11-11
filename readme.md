@@ -4989,4 +4989,123 @@ Author name: Olivia Goy | Age: 43 | Rank: 3435 | Books: 5
 Author name: Quartis Young | Age: 51 | Rank: 2371 | Books: 5
 Author name: Katy Loin | Age: 56 | Rank: 2826 | Books: 5
 
+### How to Efficiently Fetch Spring Projection Including *-to-One Associations
 
+Assume that Author and Book are again involved in a bidirectional lazy @OneToMany
+association. You want to fetch a read-only result set containing the title of each book
+and the name and genre of the author. Such a read-only result set is the perfect candidate
+for a DTO, and, being in Spring, the main way to fetch this DTO involves Spring
+projections.
+
+data snapshot
+![img.png](assets/imgdddrt.png)
+
+#### Using Nested Closed Projections
+
+The book title is fetched from the book table, while the author name and genre are
+fetched from the author table. This means that you can write an interface-based, nested
+Spring closed projection, as follows:
+
+```
+public interface BookDto {
+ public String getTitle();
+ public AuthorDto getAuthor();
+ interface AuthorDto {
+ public String getName();
+ public String getGenre();
+ }
+}
+```
+Now all you need is the proper query to populate this Spring projection. The quickest
+approach relies on the Spring Data Query Builder mechanism, as follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ List<BookDto> findBy();
+}
+```
+
+From an implementation point of view, this was really fast! But, is this approach
+working? Let’s see the result set as a JSON representation
+
+```
+[
+ {
+ "title":"A History of Ancient Prague",
+ "author":{
+ "genre":"History",
+ "name":"Joana Nimar"
+ }
+ },
+ {
+ "title":"A People's History",
+ "author":{
+ "genre":"History",
+ "name":"Joana Nimar"
+ }
+ },
+ ...
+]
+```
+
+Yes, it’s working! But is it efficient? Without inspecting the triggered SQL and the
+Persistence Context contents, you may think that this approach is great. But the
+generated SELECT fetches more data than required
+
+```
+SELECT
+ book0_.title AS col_0_0_,
+ author1_.id AS col_1_0_,
+ author1_.id AS id1_0_,
+ author1_.age AS age2_0_,
+ author1_.genre AS genre3_0_,
+ author1_.name AS name4_0_
+FROM book book0_
+Chapter 3 Fetching
+189
+LEFT OUTER JOIN author author1_
+ ON book0_.author_id = author1_.id
+```
+
+It is obvious that this query fetches all the attributes of the author (the more attributes
+the entity has, the more unneeded data is fetched). Moreover, if you inspect the
+Persistence Context contents, you’ll notice that it contains three entries in READ_ONLY
+status and none of them has the hydrated state (the hydrated state was discarded since
+this transaction was marked as readOnly):
+
+Here are the Persistence Context contents:
+
+Total number of managed entities: 3
+Total number of collection entries: 3
+EntityKey[com.bookstore.entity.Author#1]:
+Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+EntityKey[com.bookstore.entity.Author#2]:
+Author{id=2, name=Olivia Goy, genre=Horror, age=43}
+EntityKey[com.bookstore.entity.Author#4]:
+Author{id=4, name=Joana Nimar, genre=History, age=34}
+
+The road of the result set from the database to the projection passes partially
+through the Persistence Context. The authors are fetched as read-only entities
+as well. Generally speaking, the amount of data may impact performance
+(e.g., a relatively large number of unneeded fetched columns and/or a
+relatively large number of fetched rows). But since we are in the read-only
+mode, there is no hydrated state in the Persistence Context and no Dirty
+Checking is executed for the authors. Nevertheless, the Garbage Collector
+needs to collect these instances after the Persistence Context is closed.
+
+Writing an explicit JPQL produces the same output as the query generated via the Query
+Builder mechanism):
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ @Query("SELECT b.title AS title, a AS author "
+ + "FROM Book b LEFT JOIN b.author a")
+ // or as a INNER JOIN
+ // @Query("SELECT b.title AS title, b.author AS author FROM Book b")
+ List<BookDto> findByViaQuery();
+}
+```
