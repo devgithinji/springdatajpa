@@ -5192,3 +5192,101 @@ is needed, you can even drop the projection and return List<Object[]>:
  + "FROM Book b LEFT JOIN b.author a")
 List<Object[]> findByViaQueryArrayOfObjects();
 ```
+
+#### Using a Simple Open Projection
+
+Relying on a simple Spring closed projection is okay as long as you don’t care to maintain
+the data structure (tree structure of parent-child entities). If this is an issue, you can rely on
+a simple Spring open projection
+
+an open projection allows
+you to define methods with unmatched names in the Domain Model and with returns that
+are computed at runtime. Essentially, an open projection supports virtual properties.
+
+```
+public interface VirtualBookDto {
+ public String getTitle(); // of book
+ @Value("#{@authorMapper.buildAuthorDto(target.name, target.genre)}")
+ AuthorClassDto getAuthor();
+}
+```
+The highlighted SpEL expression refers to the bean AuthorMapper that invokes the
+buildAuthorDto() method and forwards the projection name and genre as the method
+parameters. So, at runtime, the name and genre of the author should be used to create an
+instance of AuthorClassDto listed here:
+
+```
+public class AuthorClassDto {
+ private String genre;
+ private String name;
+ // getters, setters, equals() and hashCode() omitted for brevity
+}
+```
+
+The job is accomplished by a helper class named AuthorMapper, as shown here:
+
+```
+@Component
+public class AuthorMapper {
+ public AuthorClassDto buildAuthorDto(String genre, String name) {
+ AuthorClassDto authorClassDto = new AuthorClassDto();
+ authorClassDto.setName(name);
+ authorClassDto.setGenre(genre);
+ return authorClassDto;
+ }
+}
+```
+How efficient is this implementation? Is it worth the effort? The triggered SQL is
+obtained from the following JPQL:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ @Query("SELECT b.title AS title, a.name AS name, a.genre AS genre "
+ + "FROM Book b LEFT JOIN b.author a")
+ List<VirtualBookDto> findByViaQueryVirtualDto();
+}
+```
+
+The SQL looks exactly as expected:
+
+
+```
+SELECT
+ book0_.title AS col_0_0_,
+ author1_.name AS col_1_0_,
+ author1_.genre AS col_2_0_
+FROM book book0_
+LEFT OUTER JOIN author author1_
+ ON book0_.author_id = author1_.id
+```
+The Persistence Context was untouched, as shown.:
+Total number of managed entities: 0
+Total number of collection entries: 0
+The JSON representation maintains the data structure:
+
+```
+ {
+ "title":"A History of Ancient Prague",
+ "author":{
+ "genre":"Joana Nimar",
+ "name":"History"
+ }
+ },
+Chapter 3 Fetching
+194
+ {
+ "title":"A People's History",
+ "author":{
+ "genre":"Joana Nimar",
+ "name":"History"
+ }
+ },
+ ...
+]
+```
+
+Even if it requires a little more work than the preceding approaches,
+relying on a simple Spring open projection maintains the data structure.
+
