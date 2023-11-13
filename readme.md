@@ -5290,3 +5290,569 @@ Chapter 3 Fetching
 Even if it requires a little more work than the preceding approaches,
 relying on a simple Spring open projection maintains the data structure.
 
+## Why to Pay Attention to Spring Projections that Include Associated Collections
+
+Assume that Author and Book are involved in a bidirectional lazy @OneToMany
+association. You want to fetch the name and the genre of each author, as well as the title
+of all associated books. Since you need a read-only result set containing a subset of
+columns from the author and book tables, let’s try to use a Spring projection (DTO).
+
+### Using Nested Spring Closed Projection
+
+The books title is fetched from the book table, while the author name and genre are
+fetched from the author table. This means that you can write an interface-based, nested
+Spring closed projection, as shown here (this approach is very tempting, thanks to its
+simplicity):
+
+```
+public interface AuthorDto {
+ public String getName();
+ public String getGenre();
+ public List<BookDto> getBooks();
+ interface BookDto {
+ public String getTitle();
+ }
+}
+```
+Notice that the book titles are mapped as a List<BookDto>. So, calling
+AuthorDto#getBooks() should return a List<BookDto> that contains only the book titles.
+
+#### Use the Query Builder Mechanism
+
+From an implementation point of view, the quickest approach to populating the
+projection relies on the Query Builder mechanism, as shown here:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ List<AuthorDto> findBy();
+}
+```
+
+Is this approach working? Let’s see the result set as a JSON representation (imagine that
+this is returned by a REST controller endpoint):
+
+```agsl
+[
+ {
+ "genre":"Anthology",
+ "books":[
+ {
+ "title":"The Beatles Anthology"
+ }
+ ],
+ "name":"Mark Janel"
+ },
+ {
+ "genre":"Horror",
+ "books":[
+ {
+ "title":"Carrie"
+ },
+ {
+ "title":"Nightmare Of A Day"
+ }
+ ],
+ "name":"Olivia Goy"
+ },
+ {
+ "genre":"Anthology",
+ "books":[
+ ],
+ "name":"Quartis Young"
+ },
+ {
+ "genre":"History",
+ "books":[
+ {
+ "title":"A History of Ancient Prague"
+ },
+ {
+ "title":"A People's History"
+ },
+ {
+ "title":"History Now"
+ }
+ ],
+ "name":"Joana Nimar"
+ }
+]
+```
+
+The result looks perfect! So, you’ve used a Spring projection and a query generated via
+the Query Builder mechanism to fetch a read-only result set. Is this efficient? Are you
+triggering a single SELECT query? Have you managed to bypass the Persistence Context?
+Well, no, no, and no!
+
+Checking the triggered SQL queries reveals the following:
+
+```
+SELECT
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+```
+
+-- for each author there is an additional SELECT
+
+```
+SELECT
+ books0_.author_id AS author_i4_1_0_,
+ books0_.id AS id1_1_0_,
+ books0_.id AS id1_1_1_,
+ books0_.author_id AS author_i4_1_1_,
+ books0_.isbn AS isbn2_1_1_,
+ books0_.title AS title3_1_1_
+FROM book books0_
+WHERE books0_.author_id = ?
+```
+
+This solution triggers five SELECT statements! It’s quite obvious that this is
+an N+1 issue. The association between Author and Book is lazy, and Spring
+needs to fetch the authors and the associated books as entities in order to
+populate the projections with the requested data. This is confirmed by the
+Persistence Context content as well.
+
+The Persistence Context contains 10 entities (four of them being collection entries) with
+READ_ONLY status and no hydrated state.
+
+In addition to the N+1 issue, the Persistence Context is not bypassed either.
+So, this approach is really bad and should be avoided.
+
+#### Use an Explicit JPQL
+
+You can sweeten the situation a little by dropping the Query Builder mechanism and
+employing an explicit JPQL, as follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a.name AS name, a.genre AS genre, b AS books "
+ + "FROM Author a INNER JOIN a.books b")
+ List<AuthorDto> findByViaQuery();
+}
+```
+This time, there is a single SELECT triggered. Conforming to the JPQL, the books are fully
+loaded, not only the titles:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.genre AS col_1_0_,
+ books1_.id AS col_2_0_,
+ books1_.id AS id1_1_,
+ books1_.author_id AS author_i4_1_,
+ books1_.isbn AS isbn2_1_,
+ books1_.title AS title3_1_
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+```
+
+Moreover, the Persistence Context was populated with six entities (and no collection
+entries) of type Book in READ_ONLY status and no hydrated state (this time, less data was
+loaded in the Persistence Context)
+
+Moreover, we lost the data structure (the tree structure of the parent-child entities), and
+each title is wrapped in its own List:
+
+
+```
+[
+ {
+ "genre":"History",
+ "books":[
+ {
+ "title":"A History of Ancient Prague"
+ }
+ ],
+ "name":"Joana Nimar"
+ },
+ {
+ "genre":"History",
+ "books":[
+ {
+ "title":"A People's History"
+ }
+ ],
+ "name":"Joana Nimar"
+ },
+ {
+ "genre":"History",
+ "books":[
+ {
+ "title":"History Now"
+ }
+ ],
+ "name":"Joana Nimar"
+ },
+ {
+ "genre":"Anthology",
+ "books":[
+ {
+ "title":"The Beatles Anthology"
+ }
+ ],
+ "name":"Mark Janel"
+ },
+ ...
+]
+```
+
+As a little tweak here, you can remove the List from the nested projection, as follows:
+
+```
+public interface AuthorDto {
+ public String getName();
+ public String getGenre();
+ public BookDto getBooks();
+ interface BookDto {
+ public String getTitle();
+ }
+}
+```
+
+This will not create the Lists, but it’s pretty confusing
+
+
+#### Use JPA JOIN FETCH
+
+JOIN FETCH is capable of initializing the associated collections
+along with their parent objects using a single SQL SELECT. So, you can write a query as
+follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a FROM Author a JOIN FETCH a.books")
+ Set<AuthorDto> findByJoinFetch();
+}
+```
+
+Notice that this example uses Set instead of List to avoid duplicates. In this
+case, adding the SQL DISTINCT clause doesn’t work. If you add an ORDER
+BY clause (e.g., ORDER BY a.name ASC), behind the scenes, Hibernate uses
+a LinkedHashSet. Therefore, the order of items is preserved as well.
+
+Calling findByJoinFetch() triggers the following SELECT (notice the INNER JOIN
+between author and book):
+
+```
+SELECT
+ author0_.id AS id1_0_0_,
+ books1_.id AS id1_1_1_,
+ author0_.age AS age2_0_0_,
+ author0_.genre AS genre3_0_0_,
+ author0_.name AS name4_0_0_,
+ books1_.author_id AS author_i4_1_1_,
+ books1_.isbn AS isbn2_1_1_,
+ books1_.title AS title3_1_1_,
+ books1_.author_id AS author_i4_1_0__,
+ books1_.id AS id1_1_0__
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+```
+
+This time, there is a single SELECT triggered. Conforming to this SQL, the authors
+and books are fully loaded, not only the names, genres, and titles. Let’s check out the
+Persistence Context (we have nine entities in READ_ONLY status and no hydrated state,
+and three of them are collection entries).
+
+This is not a surprise, since by its meaning JOIN
+FETCH fetches entities, and combined with @Transactional(readOnly=true), this results
+in read-only entities. So, the Set<AuthorDto> is obtained from these entities via the
+Persistence Context. Persistence Context content:
+
+This time, we preserve the data as the tree structure of parent-child entities. Fetching
+data as a JSON outputs the expected result without duplicates:
+
+```
+[
+ {
+ "genre":"Anthology",
+ "books":[
+ {
+ "title":"The Beatles Anthology"
+ }
+ ],
+ "name":"Mark Janel"
+ },
+ {
+ "genre":"Horror",
+ "books":[
+ {
+ "title":"Carrie"
+ },
+ {
+ "title":"Nightmare Of A Day"
+ }
+ ],
+ "name":"Olivia Goy"
+ },
+ {
+ "genre":"History",
+ "books":[
+ {
+ "title":"A History of Ancient Prague"
+ },
+ {
+ "title":"A People's History"
+ },
+ {
+ "title":"History Now"
+ }
+ ],
+ "name":"Joana Nimar"
+ }
+]
+```
+
+As you can see, JOIN FETCH maintains the tree structure of parent-child
+entities, but it brings more unneeded data into the Persistence Context than
+explicit JPQL. How this will affect overall performance depends on how much
+unneeded data is fetched and how you stress the Garbage Collector, which
+will have to clean up these objects after the Persistence Context is disposed.
+
+### Using a Simple Closed Projection
+
+Nested Spring projection is prone to performance penalties. How about using a simple
+Spring closed projection, as follows:
+
+```
+public interface SimpleAuthorDto {
+ public String getName(); // of author
+ public String getGenre(); // of author
+ public String getTitle(); // of book
+}
+```
+
+And a JPQL, as shown here:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a.name AS name, a.genre AS genre, b.title AS title "
+ + "FROM Author a INNER JOIN a.books b")
+ List<SimpleAuthorDto> findByViaQuerySimpleDto();
+}
+```
+
+This time, there is a single SELECT that fetches only the requested data:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.genre AS col_1_0_,
+ books1_.title AS col_2_0_
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+```
+
+The Persistence Context is bypassed. Persistence Context content:
+Total number of managed entities: 0
+Total number of collection entries: 0
+
+But, as the following JSON reveals, the data structure is totally lost (this is raw data):
+
+```
+[
+ {
+ "genre":"History",
+ "title":"A History of Ancient Prague",
+ "name":"Joana Nimar"
+ },
+ {
+ "genre":"History",
+ "title":"A People's History",
+ "name":"Joana Nimar"
+ },
+ {
+ "genre":"History",
+ "title":"History Now",
+ "name":"Joana Nimar"
+ },
+ ...
+]
+```
+
+While this approach fetches only the needed data and doesn’t involve the
+Persistence Context, it seriously suffers at the data representation level. In
+some cases, this is not an issue, in other cases it is. You have to process
+this data to shape it as needed (on the server-side or client-side). When no
+further processing is needed, you can even drop the projection and return  `List<Object[]>`
+
+```
+@Query("SELECT a.name AS name, a.genre AS genre, b.title AS title "
+ + "FROM Author a INNER JOIN a.books b")
+List<Object[]> findByViaArrayOfObjects();
+```
+
+### Transform List<Object[]> in DTO
+
+You can fetch List<Object[]> and transform it into DTO via the following custom
+transformer:
+
+```
+@Component
+public class AuthorTransformer {
+ public List<AuthorDto> transform(List<Object[]> rs) {
+ final Map<Long, AuthorDto> authorsDtoMap = new HashMap<>();
+ for (Object[] o : rs) {
+ Long authorId = ((Number) o[0]).longValue();
+ AuthorDto authorDto = authorsDtoMap.get(authorId);
+ if (authorDto == null) {
+ authorDto = new AuthorDto();
+ authorDto.setId(((Number) o[0]).longValue());
+ authorDto.setName((String) o[1]);
+ authorDto.setGenre((String) o[2]);
+ }
+ BookDto bookDto = new BookDto();
+ bookDto.setId(((Number) o[3]).longValue());
+ bookDto.setTitle((String) o[4]);
+ authorDto.addBook(bookDto);
+ authorsDtoMap.putIfAbsent(authorDto.getId(), authorDto);
+ }
+ return new ArrayList<>(authorsDtoMap.values());
+ }
+}
+```
+
+The AuthorDto and BookDto are simple POJOs defined as follows:
+
+```
+public class AuthorDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private Long authorId;
+ private String name;
+ private String genre;
+ private List<BookDto> books = new ArrayList<>();
+ // constructors, getters, setters omitted for brevity
+}
+```
+
+```
+public class BookDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private Long bookId;
+ private String title;
+ // constructors, getters, setters omitted for brevity
+}
+```
+
+In order to write a simple transformer, the executed query fetches the IDs of authors and
+books as well. The executed query is shown here:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+@Query("SELECT a.id AS authorId, a.name AS name, a.genre AS genre, "
+ + "b.id AS bookId, b.title AS title FROM Author a "
+ + "INNER JOIN a.books b")
+ List<Object[]> findByViaArrayOfObjectsWithIds();
+}
+```
+
+The service-method executes the query and applies the transformer as follows:
+
+```
+List<Object[]> authors = authorRepository.findByViaArrayOfObjectsWithIds();
+List< AuthorDto> authorsDto = authorTransformer.transform(authors);
+```
+
+This time, there is a single SELECT that fetches only the requested data:
+
+```
+SELECT
+ author0_.id AS col_0_0_,
+ author0_.name AS col_1_0_,
+ author0_.genre AS col_2_0_,
+ books1_.id AS col_3_0_,
+ books1_.title AS col_4_0_
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+```
+
+The Persistence Context is bypassed. Persistence Context content:
+
+```
+Total number of managed entities: 0
+Total number of collection entries: 0
+```
+
+The JSON representation of the DTO looks okay:
+
+```
+[
+ {
+ "name":"Mark Janel",
+ "genre":"Anthology",
+ "books":[
+ {
+ "title":"The Beatles Anthology",
+ "id":4
+ }
+ ],
+ "id":1
+ },
+ {
+Chapter 3 Fetching
+211
+ "name":"Olivia Goy",
+ "genre":"Horror",
+ "books":[
+ {
+ "title":"Carrie",
+ "id":5
+ },
+ {
+ "title":"Nightmare Of A Day",
+ "id":6
+ }
+ ],
+ "id":2
+ },
+ {
+ "name":"Joana Nimar",
+ "genre":"History",
+ "books":[
+ {
+ "title":"A History of Ancient Prague",
+ "id":1
+ },
+ {
+ "title":"A People's History",
+ "id":2
+ },
+ {
+ "title":"History Now",
+ "id":3
+ }
+ ],
+ "id":4
+ }
+]
+```
+
+comparison of all the data fetching strategies
+
+As expected, the Query Builder mechanism
+and the nested projections have the worse time-performance trend.
+The execution
+times for explicit JPQL and JOIN FETCH are approximately the same, but remember
+that JOIN FETCH fetches more unneeded data than an explicit JPQL. 
+
+Finally, a raw
+projection—List<Object[]> and List<Object[]>—transformed in DTO has almost the
+same execution times. So, to fetch only the needed data and maintain the data structure
+(the tree structure of parent-child entities), the fastest approach is to rely on a custom
+transformer of List<Object[]>.
