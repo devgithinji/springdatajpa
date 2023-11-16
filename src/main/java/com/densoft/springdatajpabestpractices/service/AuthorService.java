@@ -7,6 +7,7 @@ import com.densoft.springdatajpabestpractices.repository.AuthorRepo;
 import com.densoft.springdatajpabestpractices.repository.BookRepo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.Tuple;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -49,8 +50,11 @@ public class AuthorService {
     }
 
     public void fetchAuthors() {
-        List<AuthorDto> authorDto = authorRepo.fetchAuthors();
-        listToString(authorDto);
+        List<Tuple> authors = authorRepo.fetchAuthors();
+        for (Tuple author : authors) {
+            System.out.println("Author name: " + author.get("name")
+                    + " | Age: " + author.get("age"));
+        }
     }
 
     public static <T> void listToString(T authorDtoList) {

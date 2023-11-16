@@ -2,6 +2,7 @@ package com.densoft.springdatajpabestpractices.repository;
 
 import com.densoft.springdatajpabestpractices.dto.AuthorDto;
 import com.densoft.springdatajpabestpractices.model.Author;
+import jakarta.persistence.Tuple;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -24,8 +25,8 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
     List<AuthorDto> findByGenre(String genre);
 
     // Constructor Expression
-    @Query(value = "SELECT new com.densoft.springdatajpabestpractices.dto.AuthorDto(a.name, a.age) FROM Author a")
-    List<AuthorDto> fetchAuthors();
+    @Query(value = "SELECT a.name AS name, a.age AS age FROM Author a")
+    List<Tuple> fetchAuthors();
 
     //    fetch name and email
     @Query("SELECT a.name AS name, a.email AS email FROM Author a")
