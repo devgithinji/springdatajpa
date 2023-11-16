@@ -7306,3 +7306,177 @@ FROM author author0_
 
 Starting with Hibernate 5.2, ResultTransformer is deprecated, but until
 a replacement is available (in Hibernate 6.0), it can be used
+
+## How to Fetch DTO via a custom ResultTransformer
+
+Sometimes you need a custom ResultTransformer in order to obtain the desired
+DTO. Consider the Author (with id, name, genre, age, and books) and Book (with id,
+title, and isbn) entities involved in a bidirectional lazy @OneToMany association. You
+want to fetch the id, name, and age of each author, including the id and title of their
+associated books.
+
+The most intuitive DTO will be a class written as follows:
+
+```
+public class AuthorDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private Long authorId;
+ private String name;
+ private int age;
+ private List<BookDto> books = new ArrayList<>();
+ // constructor, getter, setters, etc omitted for brevity
+}
+```
+
+As you can see, besides ID, name, and age, this DTO also declares a List<BookDto>. The
+BookDto maps the ID and the title of a book as follows:
+
+
+```
+public class BookDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private Long bookId;
+ private String title;
+ // constructor, getter, setters, etc omitted for brevity
+}
+```
+
+Further, an SQL JOIN can help you fetch the desired result set:
+
+```
+@Repository
+public class Dao implements AuthorDao {
+ @PersistenceContext
+ private EntityManager entityManager;
+ @Override
+ @Transactional(readOnly = true)
+ public List<AuthorDto> fetchAuthorWithBook() {
+ Query query = entityManager
+ .createNativeQuery(
+ "SELECT a.id AS author_id, a.name AS name, a.age AS age, "
+ + "b.id AS book_id, b.title AS title "
+ + "FROM author a JOIN book b ON a.id=b.author_id")
+ .unwrap(org.hibernate.query.NativeQuery.class)
+ .setResultTransformer(new AuthorBookTransformer());
+ List<AuthorDto> authors = query.getResultList();
+ return authors;
+ }
+}
+```
+
+Trying to map the result set to AuthorDto is not achievable via a built-in ResultTransformer.
+You need to transform the result set from Object[] to List<AuthorDto> and, for this,
+you need the AuthorBookTransformer, which represents an implementation of the
+ResultTransformer interface. This interface defines two methods—transformTuple() and
+transformList(). The transformTuple() allows you to transform tuples, which are the
+elements making up each row of the query result. The transformList() method allows you
+to perform transformation on the query result as a whole.
+
+Starting with Hibernate 5.2, ResultTransformer is deprecated. Until a
+replacement is available (in Hibernate 6.0), it can be used.
+
+You need to override transformTuple() to obtain the needed transformation of each
+row of the query result:
+
+```
+public class AuthorBookTransformer implements ResultTransformer {
+ private Map<Long, AuthorDto> authorsDtoMap = new HashMap<>();
+ @Override
+ public Object transformTuple(Object[] os, String[] strings) {
+ Long authorId = ((Number) os[0]).longValue();
+ AuthorDto authorDto = authorsDtoMap.get(authorId);
+ if (authorDto == null) {
+ authorDto = new AuthorDto();
+ authorDto.setId(((Number) os[0]).longValue());
+ authorDto.setName((String) os[1]);
+ authorDto.setAge((int) os[2]);
+ }
+ BookDto bookDto = new BookDto();
+ bookDto.setId(((Number) os[3]).longValue());
+ bookDto.setTitle((String) os[4]);
+ authorDto.addBook(bookDto);
+ authorsDtoMap.putIfAbsent(authorDto.getId(), authorDto);
+ return authorDto;
+ }
+ 
+ @Override
+ public List<AuthorDto> transformList(List list) {
+ return new ArrayList<>(authorsDtoMap.values());
+ }
+ 
+ }
+```
+
+Feel free to optimize this implementation further. For now, let’s write a REST controller
+endpoint as follows:
+
+```
+@GetMapping("/authorWithBook")
+public List<AuthorDto> fetchAuthorWithBook() {
+ return bookstoreService.fetchAuthorWithBook();
+}
+```
+
+Accessing localhost:8080/authorWithBook returns the following JSON:
+
+```
+[
+ {
+ "name":"Mark Janel",
+ "age":23,
+ "books":[
+ {
+ "title":"The Beatles Anthology",
+ "id":3
+ },
+ {
+ "title":"Anthology Of An Year",
+ "id":7
+ },
+ {
+ "title":"Anthology From A to Z",
+ "id":8
+ },
+ {
+ "title":"Past Anthology",
+ "id":9
+ }
+ ],
+ "id":1
+ },
+ {
+ "name":"Olivia Goy",
+ "age":43,
+ "books":[
+ {
+ "title":"Carrie",
+ "id":4
+ },
+ {
+ "title":"Horror Train",
+ "id":6
+ }
+ ],
+ "id":2
+ },
+ {
+ "name":"Joana Nimar",
+ "age":34,
+ "books":[
+ {
+ "title":"A History of Ancient Prague",
+ "id":1
+ },
+ {
+ "title":"A People's History",
+ "id":2
+ },
+ {
+ "title":"History Today",
+ "id":5
+ }
+ ],
+ "id":4
+ }
+]
+```
