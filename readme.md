@@ -5856,3 +5856,179 @@ projection—List<Object[]> and List<Object[]>—transformed in DTO has almost t
 same execution times. So, to fetch only the needed data and maintain the data structure
 (the tree structure of parent-child entities), the fastest approach is to rely on a custom
 transformer of List<Object[]>.
+
+## How to Fetch All Entity Attributes via Spring Projection
+
+Consider an Author entity with the following four attributes: id, age, genre, and name. 
+
+We already know that it’s very simple to fetch a read-only result set containing a subset of
+these attributes via an interface/class-based Spring closed projection 
+
+But sometimes you’ll need a read-only result set containing all the entity attributes
+(a DTO that mirrors the entity). This section depicts several approaches based on
+read-only entities and Spring projections and highlights their pros and cons from a
+performance perspective.
+
+Since you need all attributes of Author, you can easily trigger a read-only query that
+fetches the result set as entities via the built-in findAll() method
+
+```
+List<Author> authors = authorRepository.findAll();
+```
+
+The built-in findAll() is annotated with @Transactional(readOnly=true). Therefore,
+the Persistence Context will be populated with Author entities in read-only mode.
+
+The read-only mode instructs Hibernate to discard the hydrated state. Moreover, there is
+no automatic flush time and no Dirty Checking. At the end of this section, we will add this
+approach in a head-to-head comparison with the other approaches discussed earlier.
+
+Keep in mind that this is a read-only entity, not a DTO that mirrors the entity
+and bypasses the Persistence Context. The meaning of a read-only entity is
+that it will be modified at some point in the current or subsequent requests. Otherwise, it should be a projection (DTO).
+
+Now, let’s involve a Spring projection and different query types. Let’s start with the
+interface-based Spring closed projection that contains the corresponding getters:
+
+```
+public interface AuthorDto {
+ public Long getId();
+ public int getAge();
+ public String getName();
+ public String getGenre();
+}
+```
+
+Now, let’s focus on different query types.
+
+### Using the Query Builder Mechanism
+
+A straightforward query can be written as follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ List<AuthorDto> findBy();
+}
+```
+
+Calling findBy() will trigger the following SELECT statement:
+
+```
+SELECT
+ author0_.id AS col_0_0_,
+ author0_.age AS col_1_0_,
+ author0_.name AS col_2_0_,
+ author0_.genre AS col_3_0_
+FROM author author0_
+```
+
+The Persistence Context remains untouched. Persistence Context content:
+Total number of managed entities: 0
+
+
+### Using JPQL and @Query
+
+An improper approach will rely on @Query and JPQL as follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a FROM Author a")
+ List<AuthorDto> fetchAsDto();
+}
+```
+
+Calling fetchAsDto() will trigger the following SELECT statement:
+
+```
+SELECT
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+```
+
+This SELECT is exactly the same as the one triggered in the previous approach, but the
+Persistence Context is not empty. It contains five entries in READ_ONLY status and with a
+null loaded state.
+
+This time, the data is loaded in the Persistence Context as in the read-only
+entities case. However, this time, Spring must also create the AuthorDto list.
+As a tip, fetching the result set as a List<Object[]> instead of as a
+List<AuthorDto> produces the same behavior.
+
+### Using JPQL with an Explicit List of Columns and @Query
+
+You can use JPQL and @Query by explicitly listing the columns to be fetches,
+as shown here:
+
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a.id AS id, a.age AS age, a.name AS name,
+ a.genre AS genre FROM Author a")
+ List<AuthorDto> fetchAsDtoColumns();
+}
+```
+
+The triggered SQL is efficient and quite obvious:
+
+```
+SELECT
+ author0_.id AS col_0_0_,
+ author0_.age AS col_1_0_,
+ author0_.name AS col_2_0_,
+ author0_.genre AS col_3_0_
+FROM author author0_
+```
+
+Moreover, the Persistence Context remains untouched. Persistence Context content:
+
+Total number of managed entities: 0
+
+This approach is quite efficient. If you use @Query and JPQL, then pay
+attention to how the JPQL is written. Explicitly listing the columns to be
+fetched eliminates the performance penalty caused by loading data in the
+Persistence Context.
+
+As a tip, fetching the result set as a List<Object[]> instead of as a
+List<AuthorDto> produces the same behavior.
+
+### Using a Native Query and @Query
+
+You can use @Query and native queries, as follows:
+
+```
+@Repository
+@Transactional(readOnly=true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(value = "SELECT id, age, name, genre FROM author",
+ nativeQuery = true)
+ List<AuthorDto> fetchAsDtoNative();
+}
+```
+
+Being a native query, the triggered SQL is obvious:
+
+```
+SELECT
+ id,
+ age,
+ name,
+ genre
+FROM author
+```
+
+The Persistence Context remains untouched. Persistence Context content:
+Total number of managed entities: 0
+
+It looks like JPQL with an
+explicit list of columns and the Query Builder mechanism are the fastest approaches.
+
+
