@@ -19,4 +19,9 @@ class AuthorServiceTest {
     void fetchByGenre() {
         authorService.fetchByGenre();
     }
+
+    @Test
+    void fetchAuthors() {
+        authorService.fetchAuthors();
+    }
 }

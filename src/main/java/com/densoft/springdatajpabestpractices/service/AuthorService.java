@@ -48,6 +48,11 @@ public class AuthorService {
         listToString(authorDto);
     }
 
+    public void fetchAuthors() {
+        List<AuthorDto> authorDto = authorRepo.fetchAuthors();
+        listToString(authorDto);
+    }
+
     public static <T> void listToString(T authorDtoList) {
         ObjectMapper mapper = new ObjectMapper();
         try {

@@ -23,6 +23,10 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
     //fetch all data
     List<AuthorDto> findByGenre(String genre);
 
+    // Constructor Expression
+    @Query(value = "SELECT new com.densoft.springdatajpabestpractices.dto.AuthorDto(a.name, a.age) FROM Author a")
+    List<AuthorDto> fetchAuthors();
+
     //    fetch name and email
     @Query("SELECT a.name AS name, a.email AS email FROM Author a")
     List<AuthorDto> fetchNameEmail();
