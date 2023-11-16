@@ -6887,3 +6887,143 @@ System.out.println(author.get("name") instanceof String);
 // true
 System.out.println(author.get("age") instanceof Integer);
 ```
+
+### How to Fetch DTO via @SqlResultSetMapping and @NamedNativeQuery
+
+Assume that the application contains the following Author entity. This entity maps an
+author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ @GeneratedValue(strategy = GenerationType.IDENTITY)
+ private Long id;
+ private int age;
+ private String name;
+ private String genre;
+ // getters and setters omitted for brevity
+}
+```
+
+JPA @SqlResultSetMapping and @NamedNativeQuery is a combination that works for
+scalar (ColumnResult), constructor (ConstructorResult), and entity (EntityResult)
+mappings.
+
+
+#### Scalar Mappings
+
+Via ColumnResult, you can map any column to a scalar result type. For example, let’s
+map the name column as follows:
+
+```
+@SqlResultSetMapping(
+ name = "AuthorsNameMapping",
+ columns = {
+ @ColumnResult(name = "name")
+ }
+)
+@NamedNativeQuery(
+ name = "Author.fetchName",
+ query = "SELECT name FROM author",
+ resultSetMapping = "AuthorsNameMapping"
+)
+@Entity
+public class Author implements Serializable {
+...
+}
+```
+
+The Spring repository uses the @Query annotation to note that this is a native query:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(nativeQuery = true)
+ List<String> fetchName();
+}
+```
+
+#### Constructor Mapping
+
+This time, the goal is to fetch only the name and age of all authors. So, you need to
+fetch a DTO via @SqlResultSetMapping and @NamedNativeQuery and we will rely on
+ConstructorResult. This is especially useful for native queries where Constructor
+Expression cannot be used.
+
+The first step consists of decorating the Author entity with the corresponding
+@SqlResultSetMapping and @NamedNativeQuery to fetch name and age in a DTO class
+named AuthorDto:
+
+```
+@NamedNativeQuery(
+ name = "Author.fetchNameAndAge",
+ query = "SELECT name, age FROM author",
+ resultSetMapping = "AuthorDtoMapping"
+)
+@SqlResultSetMapping(
+ name = "AuthorDtoMapping",
+ classes = @ConstructorResult(
+ targetClass = AuthorDto.class,
+ columns = {
+ @ColumnResult(name = "name"),
+ @ColumnResult(name = "age")
+ }
+ )
+)
+@Entity
+public class Author implements Serializable {
+ ...
+}
+```
+
+The AuthorDto is a simple class that maps name and age, as follows:
+
+```
+public class AuthorDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private final String name;
+ private final int age;
+ public AuthorDto(String name, int age) {
+ this.name = name;
+ this.age = age;
+ }
+ public String getName() {
+ return name;
+ }
+ public int getAge() {
+ return age;
+ }
+}
+```
+
+The Spring repository uses the @Query annotation to note that this is a native query:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(nativeQuery = true)
+ List<AuthorDto> fetchNameAndAge();
+}
+```
+
+Calling fetchNameAndAge() will trigger the following SQL (this is the native SQL
+provided in @NamedNativeQuery):
+
+
+```
+SELECT
+ name,
+ age
+FROM author
+```
+
+#### Entity Mapping
+
+You can fetch a single entity or multiple entities via EntityResult.
+
+scalar queries deal with single values, constructor expressions are used for creating custom objects in the query, and entity mapping involves the mapping between Java objects and database tables
+
