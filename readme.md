@@ -5619,7 +5619,7 @@ explicit JPQL. How this will affect overall performance depends on how much
 unneeded data is fetched and how you stress the Garbage Collector, which
 will have to clean up these objects after the Persistence Context is disposed.
 
-### Using a Simple Closed Projection
+#### Using a Simple Closed Projection
 
 Nested Spring projection is prone to performance penalties. How about using a simple
 Spring closed projection, as follows:
@@ -5695,7 +5695,7 @@ further processing is needed, you can even drop the projection and return  `List
 List<Object[]> findByViaArrayOfObjects();
 ```
 
-### Transform List<Object[]> in DTO
+#### Transform List<Object[]> in DTO
 
 You can fetch List<Object[]> and transform it into DTO via the following custom
 transformer:
@@ -5857,7 +5857,7 @@ same execution times. So, to fetch only the needed data and maintain the data st
 (the tree structure of parent-child entities), the fastest approach is to rely on a custom
 transformer of List<Object[]>.
 
-## How to Fetch All Entity Attributes via Spring Projection
+### How to Fetch All Entity Attributes via Spring Projection
 
 Consider an Author entity with the following four attributes: id, age, genre, and name. 
 
@@ -5901,7 +5901,7 @@ public interface AuthorDto {
 
 Now, let’s focus on different query types.
 
-### Using the Query Builder Mechanism
+#### Using the Query Builder Mechanism
 
 A straightforward query can be written as follows:
 
@@ -5928,7 +5928,7 @@ The Persistence Context remains untouched. Persistence Context content:
 Total number of managed entities: 0
 
 
-### Using JPQL and @Query
+#### Using JPQL and @Query
 
 An improper approach will rely on @Query and JPQL as follows:
 
@@ -5961,7 +5961,7 @@ entities case. However, this time, Spring must also create the AuthorDto list.
 As a tip, fetching the result set as a List<Object[]> instead of as a
 List<AuthorDto> produces the same behavior.
 
-### Using JPQL with an Explicit List of Columns and @Query
+#### Using JPQL with an Explicit List of Columns and @Query
 
 You can use JPQL and @Query by explicitly listing the columns to be fetches,
 as shown here:
@@ -6000,7 +6000,7 @@ Persistence Context.
 As a tip, fetching the result set as a List<Object[]> instead of as a
 List<AuthorDto> produces the same behavior.
 
-### Using a Native Query and @Query
+#### Using a Native Query and @Query
 
 You can use @Query and native queries, as follows:
 
@@ -6032,7 +6032,7 @@ It looks like JPQL with an
 explicit list of columns and the Query Builder mechanism are the fastest approaches.
 
 
-## How to Fetch DTO via Constructor Expression
+### How to Fetch DTO via Constructor Expression
 
 Assume that the application contains the following Author entity. This entity maps an
 author profile:
@@ -6140,4 +6140,77 @@ SELECT
 FROM author author0_
 ```
 
+### Why You Should Avoid Fetching Entities in DTO via the Constructor Expression
+
+Consider two entities, Author and Book. There is no materialized association between
+them, but both entities share an attribute named genre.
+
+![img.png](assets/imguoiutr.png)
+
+The goal consists of using this attribute to join the tables corresponding to Author and
+Book, and fetching the result in a DTO. The result should contain the Author entity and
+only the title attribute from Book.
+
+However, this scenario can be solved via DTO and a Constructor Expression
+as well. Nevertheless, the involved performance penalty is a clear signal that this
+approach should be avoided.
+
+Consider the classical DTO implementation used with a Constructor Expression:
+
+```
+public class BookstoreDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private final Author author;
+ private final String title;
+ public BookstoreDto(Author author, String title) {
+ this.author = author;
+ this.title = title;
+ }
+ public Author getAuthor() {
+ return author;
+ }
+ public String getTitle() {
+ return title;
+ }
+}
+```
+
+The JPQL used to populate this DTO is written in the following repository:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT new com.bookstore.dto.BookstoreDto(a, b.title)"
+ + "FROM Author a JOIN Book b ON a.genre=b.genre ORDER BY a.id")
+ List<BookstoreDto> fetchAll();
+}
+```
+
+Calling the fetchAll() method reveals that the data cannot be fetched in a single
+SELECT. Each author needs a secondary SELECT. Therefore, it’s prone to the N+1
+problem:
+
+
+```
+SELECT
+ author0_.id AS col_0_0_,
+ book1_.title AS col_1_0_
+FROM author author0_
+INNER JOIN book book1_
+ ON (author0_.genre = book1_.genre)
+ORDER BY author0_.id
+SELECT
+ author0_.id AS id1_0_0_,
+ author0_.age AS age2_0_0_,
+ author0_.genre AS genre3_0_0_,
+ author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+```
+
+This approach cannot fetch the data in a single SELECT, and it’s prone to
+N+1. Using Spring projections, a JPA Tuple, or even a Hibernate-specific
+ResultTransformer are all better approaches. These approaches will fetch
+the data in a single SELECT.
 
