@@ -2,10 +2,150 @@
 
 ## Table of contents
 
-1. [Associations](#Associations)
-    1. [How to effectively shape the @OneToMany Associations](#how-to-effectively-shape-the-onetomany-associations)
-    2. [Why should you avoid the unidirectional @OneToMany Association](#why-should-you-avoid-the-unidirectional-onetomany-association)
-
+<!-- TOC -->
+* [<p style="color: #2563EB">Spring Data JPA Best Practices</p>](#p-stylecolor-2563ebspring-data-jpa-best-practicesp)
+  * [Table of contents](#table-of-contents)
+* [Associations](#associations)
+  * [How to effectively shape the @OneToMany Associations](#how-to-effectively-shape-the-onetomany-associations)
+    * [Best way to code a bidirectional @OneToMany association](#best-way-to-code-a-bidirectional-onetomany-association)
+  * [Why should you avoid the unidirectional @OneToMany Association](#why-should-you-avoid-the-unidirectional-onetomany-association)
+    * [Regular Unidirectional @OneToMany](#regular-unidirectional-onetomany)
+      * [Persisting Author and their books](#persisting-author-and-their-books)
+      * [Persisting a new book of an existing author](#persisting-a-new-book-of-an-existing-author)
+      * [Deleting the last book](#deleting-the-last-book)
+      * [Deleting the first book](#deleting-the-first-book)
+    * [Using @OrderColumn](#using-ordercolumn)
+      * [Persist the Author and Books](#persist-the-author-and-books)
+      * [Persist a New Book of an Existing Author](#persist-a-new-book-of-an-existing-author)
+      * [Delete the Last Book](#delete-the-last-book)
+      * [Delete the First Book](#delete-the-first-book)
+    * [@JoinColumn](#joincolumn)
+      * [Persist the author and the books](#persist-the-author-and-the-books)
+      * [Persist a New Book of an Existing Author](#persist-a-new-book-of-an-existing-author-1)
+      * [Delete the Last Book](#delete-the-last-book-1)
+      * [Delete the First Book](#delete-the-first-book-1)
+  * [How Efficient Is the Unidirectional @ManyToOne](#how-efficient-is-the-unidirectional-manytoone)
+    * [Adding a New Book to a Certain Author](#adding-a-new-book-to-a-certain-author)
+    * [Fetching All Books of an Author](#fetching-all-books-of-an-author)
+    * [Paging the Books of an Author](#paging-the-books-of-an-author)
+    * [Fetching All Books of an Author and Adding a New Book](#fetching-all-books-of-an-author-and-adding-a-new-book)
+    * [Fetching all Books of an Author and Deleting a Book](#fetching-all-books-of-an-author-and-deleting-a-book)
+  * [How to Effectively Shape the @ManyToMany Association](#how-to-effectively-shape-the-manytomany-association)
+    * [The best way to code a bidirectional @ManyToMany association is described in the following sections.](#the-best-way-to-code-a-bidirectional-manytomany-association-is-described-in-the-following-sections)
+      * [Choose the Owner of the Relationship](#choose-the-owner-of-the-relationship)
+      * [Always Use Set not List](#always-use-set-not-list)
+      * [Keep Both Sides of the Association in Sync](#keep-both-sides-of-the-association-in-sync)
+      * [Avoid CascadeType.ALL and CascadeType.REMOVE](#avoid-cascadetypeall-and-cascadetyperemove)
+      * [Setting Up the Join Table](#setting-up-the-join-table)
+      * [Using Lazy Fetching on Both Sides of the Association](#using-lazy-fetching-on-both-sides-of-the-association)
+      * [Override equals() and hashCode()](#override-equals-and-hashcode)
+      * [Pay Attention to How toString() Is Overridden](#pay-attention-to-how-tostring-is-overridden)
+  * [Why Set Is Better than List in @ManyToMany](#why-set-is-better-than-list-in-manytomany)
+    * [Using List](#using-list)
+    * [Using set](#using-set)
+    * [Preserving the Order of the Result Set](#preserving-the-order-of-the-result-set)
+      * [Using @OrderBy](#using-orderby)
+  * [Why and When to Avoid Removing Child Entities with CascadeType.Remove and orphanRemoval=true](#why-and-when-to-avoid-removing-child-entities-with-cascadetyperemove-and-orphanremovaltrue)
+    * [Deleting Authors that Are Already Loaded in the Persistence Context](#deleting-authors-that-are-already-loaded-in-the-persistence-context)
+    * [One Author Has Already Been Loaded in the Persistence Context](#one-author-has-already-been-loaded-in-the-persistence-context)
+    * [More Authors Have Been Loaded in the Persistence Context](#more-authors-have-been-loaded-in-the-persistence-context)
+    * [One Author and His Associated Books Have Been Loaded in the Persistence Context](#one-author-and-his-associated-books-have-been-loaded-in-the-persistence-context)
+    * [Deleting When the Author and Books that Should Be Deleted Are Not Loaded in the Persistence Context](#deleting-when-the-author-and-books-that-should-be-deleted-are-not-loaded-in-the-persistence-context)
+  * [How to Fetch Associations via JPA Entity Graphs](#how-to-fetch-associations-via-jpa-entity-graphs)
+    * [Defining an Entity Graph via @NamedEntityGraph](#defining-an-entity-graph-via-namedentitygraph)
+    * [Overriding a Query Method](#overriding-a-query-method)
+    * [Using the Query Builder Mechanism](#using-the-query-builder-mechanism)
+    * [Using Specification](#using-specification)
+    * [Using @Query and JPQL](#using-query-and-jpql)
+    * [consider](#consider)
+    * [Ad Hoc Entity Graphs](#ad-hoc-entity-graphs)
+    * [Defining an Entity Graph via EntityManager](#defining-an-entity-graph-via-entitymanager)
+  * [How to Fetch Associations via Entity Sub-Graphs](#how-to-fetch-associations-via-entity-sub-graphs)
+    * [Using @NamedEntityGraph and @NamedSubgraph](#using-namedentitygraph-and-namedsubgraph)
+    * [Using the Dot Notation (.) in Ad Hoc Entity Graphs](#using-the-dot-notation--in-ad-hoc-entity-graphs)
+    * [Defining an Entity Sub-Graph via EntityManager](#defining-an-entity-sub-graph-via-entitymanager)
+  * [How to Handle Entity Graphs and Basic Attributes](#how-to-handle-entity-graphs-and-basic-attributes)
+  * [How to Filter Associations via a Hibernate-Specific @Where Annotation](#how-to-filter-associations-via-a-hibernate-specific-where-annotation)
+  * [How to Optimize Unidirectional/ Bidirectional @OneToOne via @MapsId](#how-to-optimize-unidirectional-bidirectional-onetoone-via-mapsid)
+    * [Regular Unidirectional @OneToOne](#regular-unidirectional-onetoone)
+    * [Regular Bidirectional @OneToOne](#regular-bidirectional-onetoone)
+    * [@MapsId to the Rescue of @OneToOne](#mapsid-to-the-rescue-of-onetoone)
+  * [How to Validate that Only One Association Is Non-Null](#how-to-validate-that-only-one-association-is-non-null)
+    * [Testing Time](#testing-time)
+  * [Entities](#entities)
+    * [How to Adopt a Fluent API Style in Entities](#how-to-adopt-a-fluent-api-style-in-entities)
+      * [Fluent-Style via Entity Setters](#fluent-style-via-entity-setters)
+      * [Fluent-Style via Additional Methods](#fluent-style-via-additional-methods)
+    * [How to Populate a Child-Side Parent Association via a Hibernate-Specific Proxy](#how-to-populate-a-child-side-parent-association-via-a-hibernate-specific-proxy)
+      * [Using findById()](#using-findbyid)
+      * [Using getOne()](#using-getone)
+    * [How to Use Java 8 Optional in Persistence Layer](#how-to-use-java-8-optional-in-persistence-layer)
+      * [Optional in Entities](#optional-in-entities)
+      * [Optional in Repositories](#optional-in-repositories)
+    * [How to Write Immutable Entities](#how-to-write-immutable-entities)
+        * [**Financial Transactions**:](#financial-transactions)
+        * [**Configuration Parameters**:](#configuration-parameters)
+        * [**Immutable Collections**:](#immutable-collections)
+        * [**Thread Safety**:](#thread-safety)
+        * [**Event Sourcing**:](#event-sourcing)
+    * [How to Clone Entities](#how-to-clone-entities)
+      * [Cloning the Parent and Associating the Books](#cloning-the-parent-and-associating-the-books)
+      * [Cloning the Parent and the Books](#cloning-the-parent-and-the-books)
+      * [Joining These Cases](#joining-these-cases)
+    * [Why and How to Activate Dirty Tracking](#why-and-how-to-activate-dirty-tracking)
+    * [How to Map a Boolean to a Yes/No](#how-to-map-a-boolean-to-a-yesno)
+    * [The Best Way to Publish Domain Events from Aggregate Roots](#the-best-way-to-publish-domain-events-from-aggregate-roots)
+  * [Fetching](#fetching)
+    * [How to use Direct fetching](#how-to-use-direct-fetching)
+      * [Direct Fetching via Spring Data](#direct-fetching-via-spring-data)
+      * [Fetching via EntityManager](#fetching-via-entitymanager)
+      * [Fetching via Hibernate-Specific Session](#fetching-via-hibernate-specific-session)
+    * [Direct Fetching and Session-Level Repeatable-Reads](#direct-fetching-and-session-level-repeatable-reads)
+      * [Direct Fetching Multiple Entities by ID](#direct-fetching-multiple-entities-by-id)
+    * [Why Use Read-Only Entities Whenever You Plan to Propagate Changes to the Database in a Future Persistence Context](#why-use-read-only-entities-whenever-you-plan-to-propagate-changes-to-the-database-in-a-future-persistence-context)
+      * [Load Author in Read-Write Mode](#load-author-in-read-write-mode)
+      * [Load Author in Read-Only Mode](#load-author-in-read-only-mode)
+      * [Update the Author](#update-the-author)
+    * [How to Lazy Load the Entity Attributes via Hibernate Bytecode Enhancement](#how-to-lazy-load-the-entity-attributes-via-hibernate-bytecode-enhancement)
+      * [enabling Lazy Loading of Attributes](#enabling-lazy-loading-of-attributes)
+    * [Attribute Lazy Loading and N+1](#attribute-lazy-loading-and-n1)
+    * [Attribute Lazy Loading and Lazy Initialization Exceptions](#attribute-lazy-loading-and-lazy-initialization-exceptions)
+      * [Providing a Custom Jackson Filter](#providing-a-custom-jackson-filter)
+    * [How to Lazy Load the  Entity Attributes via Subentities](#how-to-lazy-load-the--entity-attributes-via-subentities)
+    * [How to Fetch DTO via Spring Projections](#how-to-fetch-dto-via-spring-projections)
+      * [JPA Named (Native) Queries Can Be Combined with Spring Projections](#jpa-named-native-queries-can-be-combined-with-spring-projections)
+      * [Class-Based Projections](#class-based-projections)
+      * [How to Reuse a Spring Projection](#how-to-reuse-a-spring-projection)
+      * [How to Use Dynamic Spring Projections](#how-to-use-dynamic-spring-projections)
+    * [How to Add an Entity in a Spring Projection](#how-to-add-an-entity-in-a-spring-projection)
+      * [Materialized Association](#materialized-association)
+      * [Not Materialized Association](#not-materialized-association)
+    * [How to Enrich Spring Projections with Virtual Properties That Are/Aren’t Part of Entities](#how-to-enrich-spring-projections-with-virtual-properties-that-arearent-part-of-entities)
+    * [How to Efficiently Fetch Spring Projection Including *-to-One Associations](#how-to-efficiently-fetch-spring-projection-including--to-one-associations)
+      * [Using Nested Closed Projections](#using-nested-closed-projections)
+      * [Using a Simple Closed Projection](#using-a-simple-closed-projection)
+      * [Using a Simple Open Projection](#using-a-simple-open-projection)
+    * [Why to Pay Attention to Spring Projections that Include Associated Collections](#why-to-pay-attention-to-spring-projections-that-include-associated-collections)
+      * [Using Nested Spring Closed Projection](#using-nested-spring-closed-projection)
+      * [Use the Query Builder Mechanism](#use-the-query-builder-mechanism)
+      * [Use an Explicit JPQL](#use-an-explicit-jpql)
+      * [Use JPA JOIN FETCH](#use-jpa-join-fetch)
+      * [Using a Simple Closed Projection](#using-a-simple-closed-projection-1)
+      * [Transform List<Object[]> in DTO](#transform-listobject-in-dto)
+    * [How to Fetch All Entity Attributes via Spring Projection](#how-to-fetch-all-entity-attributes-via-spring-projection)
+      * [Using the Query Builder Mechanism](#using-the-query-builder-mechanism-1)
+      * [Using JPQL and @Query](#using-jpql-and-query)
+      * [Using JPQL with an Explicit List of Columns and @Query](#using-jpql-with-an-explicit-list-of-columns-and-query)
+      * [Using a Native Query and @Query](#using-a-native-query-and-query)
+    * [How to Fetch DTO via Constructor Expression](#how-to-fetch-dto-via-constructor-expression)
+    * [Why You Should Avoid Fetching Entities in DTO via the Constructor Expression](#why-you-should-avoid-fetching-entities-in-dto-via-the-constructor-expression)
+    * [How to Fetch DTO via a JPA Tuple](#how-to-fetch-dto-via-a-jpa-tuple)
+    * [How to Fetch DTO via @SqlResultSetMapping and @NamedNativeQuery](#how-to-fetch-dto-via-sqlresultsetmapping-and-namednativequery)
+      * [Scalar Mappings](#scalar-mappings)
+      * [Constructor Mapping](#constructor-mapping)
+      * [Entity Mapping](#entity-mapping)
+    * [How to Fetch DTO via ResultTransformer](#how-to-fetch-dto-via-resulttransformer)
+<!-- TOC -->
 # Associations
 
 ## How to effectively shape the @OneToMany Associations
@@ -5859,14 +5999,14 @@ Chapter 3 Fetching
 Even if it requires a little more work than the preceding approaches,
 relying on a simple Spring open projection maintains the data structure.
 
-## Why to Pay Attention to Spring Projections that Include Associated Collections
+### Why to Pay Attention to Spring Projections that Include Associated Collections
 
 Assume that Author and Book are involved in a bidirectional lazy @OneToMany
 association. You want to fetch the name and the genre of each author, as well as the title
 of all associated books. Since you need a read-only result set containing a subset of
 columns from the author and book tables, let’s try to use a Spring projection (DTO).
 
-### Using Nested Spring Closed Projection
+#### Using Nested Spring Closed Projection
 
 The books title is fetched from the book table, while the author name and genre are
 fetched from the author table. This means that you can write an interface-based, nested
@@ -7027,3 +7167,142 @@ You can fetch a single entity or multiple entities via EntityResult.
 
 scalar queries deal with single values, constructor expressions are used for creating custom objects in the query, and entity mapping involves the mapping between Java objects and database tables
 
+
+### How to Fetch DTO via ResultTransformer
+
+Hibernate’s result transformers are one of the most powerful mechanisms for
+customizing result set mappings. Result transformers allows you to transform
+the result set in any way you like.
+
+Assume that the application contains the following Author entity. This entity maps an
+author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ @GeneratedValue(strategy = GenerationType.IDENTITY)
+ private Long id;
+ private int age;
+ private String name;
+ private String genre;
+ // getters and setters omitted for brevity
+}
+```
+
+The goal is to fetch only the name and age of all authors. This time, the application
+relies on DTO and on the Hibernate-specific ResultTransformer. This interface is the
+Hibernate-specific way to transform query results into the actual application-visible
+query result list. It works for JPQL and native queries and is a really powerful feature.
+
+
+The first step consists of defining the DTO class. ResultTransformer can fetch data in a
+DTO with a constructor and no setters or in a DTO with no constructor but with setters.
+Fetching the name and age in a DTO with a constructor and no setters requires a DTO, as
+shown here:
+
+```
+public class AuthorDtoNoSetters implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private final String name;
+ private final int age;
+ public AuthorDtoNoSetters(String name, int age) {
+ this.name = name;
+ this.age = age;
+ }
+ public String getName() {
+ return name;
+ }
+ public int getAge() {
+ return age;
+ }
+}
+```
+
+Further, the application uses AliasToBeanConstructorResultTransformer. This
+is useful for this kind of DTO. You can write a JPQL query to fetch the name and age
+attributes via the EntityManager#createQuery() and unwrap(org.hibernate.query.
+Query.class) methods as follows:
+
+```
+@Repository
+public class Dao implements AuthorDao {
+ @PersistenceContext
+ private EntityManager entityManager;
+ @Override
+ @Transactional(readOnly = true)
+ public List<AuthorDtoNoSetters> fetchAuthorsNoSetters() {
+ Query query = entityManager
+ .createQuery("SELECT a.name as name, a.age as age FROM Author a")
+ .unwrap(org.hibernate.query.Query.class)
+ .setResultTransformer(
+ new AliasToBeanConstructorResultTransformer(
+ AuthorDtoNoSetters.class.getConstructors()[0]
+ )
+ );
+ List<AuthorDtoNoSetters> authors = query.getResultList();
+ return authors;
+ }
+}
+```
+
+ResultTransformer can fetch the data in a DTO with setters and no constructor as well.
+Such a DTO can be as follows:
+
+```
+public class AuthorDtoWithSetters implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private String name;
+ private int age;
+ public String getName() {
+ return name;
+ }
+ public int getAge() {
+ return age;
+ }
+ public void setName(String name) {
+ this.name = name;
+ }
+ public void setAge(int age) {
+ this.age = age;
+ }
+}
+```
+
+This time, the application relies on Transformers.aliasToBean(). The JPQL query
+that fetches the name and age attributes uses the EntityManager#createQuery() and
+unwrap(org.hibernate.query.Query.class) methods, as follows:
+
+```
+@Repository
+public class Dao implements AuthorDao {
+ PersistenceContext
+ private EntityManager entityManager;
+ @Override
+ @Transactional(readOnly = true)
+ public List<AuthorDtoWithSetters> fetchAuthorsWithSetters() {
+ Query query = entityManager
+ .createQuery("SELECT a.name as name, a.age as age FROM Author a")
+ .unwrap(org.hibernate.query.Query.class)
+ .setResultTransformer(
+ Transformers.aliasToBean(AuthorDtoWithSetters.class)
+ );
+ List<AuthorDtoWithSetters> authors = query.getResultList();
+ return authors;
+ }
+}
+```
+
+Calling fetchAuthorsNoSetters() or fetchAuthorsWithSetters() will trigger the next
+SQL:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.age AS col_1_0_
+FROM author author0_
+```
+
+Starting with Hibernate 5.2, ResultTransformer is deprecated, but until
+a replacement is available (in Hibernate 6.0), it can be used
