@@ -21,13 +21,7 @@ public interface AuthorRepo extends JpaRepository<Author, Long>, JpaSpecificatio
     List<AuthorDto> findBy();
 
     //fetch all data
-    @Query("SELECT a.age AS age, a.name AS name, a.genre AS genre, "
-            + "a.email AS email, a.address AS address FROM Author a")
-    List<AuthorDto> fetchAll();
-
-    //fetch age, name and genre
-    @Query("SELECT a.age AS age, a.name AS name, a.genre AS genre FROM Author a")
-    List<AuthorDto> fetchAgeNameGenre();
+    List<AuthorDto> findByGenre(String genre);
 
     //    fetch name and email
     @Query("SELECT a.name AS name, a.email AS email FROM Author a")

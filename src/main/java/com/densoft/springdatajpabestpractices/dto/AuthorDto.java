@@ -1,17 +1,20 @@
 package com.densoft.springdatajpabestpractices.dto;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
+public class AuthorDto {
+    private final String name;
+    private final int age;
 
-@JsonInclude(JsonInclude.Include.NON_DEFAULT)
-public interface AuthorDto {
-    Integer getAge();
+    public AuthorDto(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
 
-    String getName();
+    public String getName() {
+        return name;
+    }
 
-    String getGenre();
-
-    String getEmail();
-
-    String getAddress();
+    public int getAge() {
+        return age;
+    }
 
 }

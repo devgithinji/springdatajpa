@@ -6032,3 +6032,112 @@ It looks like JPQL with an
 explicit list of columns and the Query Builder mechanism are the fastest approaches.
 
 
+## How to Fetch DTO via Constructor Expression
+
+Assume that the application contains the following Author entity. This entity maps an
+author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ @GeneratedValue(strategy = GenerationType.IDENTITY)
+ private Long id;
+ private int age;
+ private String name;
+ private String genre;
+ // getters and setters omitted for brevity
+}
+```
+
+The goal is to fetch only the name and age of all authors having the same genre. This time,
+the application relies on a DTO with a constructor and arguments
+
+The first step consists of writing the DTO class. This class contains instance variables that
+map the entity attributes that should be fetched from the database, a constructor with
+arguments for initializing these instance variables, and specific getters (no setters are
+needed). The following AuthorDto is proper for fetching the name and age:
+
+```
+public class AuthorDto implements Serializable {
+ private static final long serialVersionUID = 1L;
+ private final String name;
+ private final int age;
+ public AuthorDto(String name, int age) {
+ this.name = name;
+ this.age = age;
+ }
+ public String getName() {
+ return name;
+ }
+ public int getAge() {
+ return age;
+ }
+}
+```
+
+The second step consists of writing a typical Spring repository. The needed SQL is
+generated via the Spring Data Query Builder mechanism and the result set is mapped to
+List<AuthorDto>:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ List<AuthorDto> findByGenre(String genre);
+}
+```
+
+Calling findByGenre() will trigger the following SQL:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.age AS col_1_0_
+FROM
+ author author0_
+WHERE
+ author0_.genre = ?
+```
+
+Displaying the results is pretty straightforward:
+
+```
+List<AuthorDto> authors =...;
+for (AuthorDto author : authors) {
+ System.out.println("Author name: " + author.getName()
+ + " | Age: " + author.getAge());
+}
+```
+
+Here’s a possible output:
+Author name: Mark Janel | Age: 23
+Author name: Quartis Young | Age: 51
+Author name: Alicia Tom | Age: 38
+
+The Spring Data Query Builder mechanism is great, but it has some limitations. If this
+mechanism is not preferred or is simply not applicable, then JPQL can be used as well. 
+
+In JPQL, a constructor can be used in the SELECT clause to return an instance of a nonentity Java object —this is known as the Constructor Expression:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(value="SELECT new com.bookstore.dto.AuthorDto(a.name, a.age)
+ FROM Author a")
+ List<AuthorDto> fetchAuthors();
+}
+```
+
+Calling fetchAuthors() will trigger the following SQL
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.age AS col_1_0_
+FROM author author0_
+```
+
+

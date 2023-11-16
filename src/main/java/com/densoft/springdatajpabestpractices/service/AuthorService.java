@@ -11,10 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
 import java.util.List;
-
-import static com.densoft.springdatajpabestpractices.repository.AuthorRepo.*;
 
 @Service
 @RequiredArgsConstructor
@@ -37,38 +34,24 @@ public class AuthorService {
                 .addBook(new Book()
                         .title("A People's History")
                         .isbn("002-JN"));
-        authorRepo.save(author);
-        log.info("created author: {}", author);
+
+
+        Author author1 = new Author().name("Dennis Githinji").age(56).genre("History");
+        Author author2 = new Author().name("paul wakahia").age(46).genre("Maths");
+
+        authorRepo.saveAll(List.of(author, author1, author2));
     }
 
-    public void fetchAll() {
-        List<AuthorDto> authorDto = authorRepo.fetchAll();
-        System.out.println(listToString(authorDto));
+
+    public void fetchByGenre() {
+        List<AuthorDto> authorDto = authorRepo.findByGenre("History");
+        listToString(authorDto);
     }
 
-    public void fetchAgeNameGenre() {
-        List<AuthorDto> authorDto = authorRepo.fetchAgeNameGenre();
-        System.out.println(listToString(authorDto));
-    }
-
-    public void fetchNameAndEmail() {
-        List<AuthorDto> authorDto = authorRepo.fetchNameEmail();
-        System.out.println(listToString(authorDto));
-    }
-
-    public void fetchByName() {
-        Author author = authorRepo.findByName("Joana Nimar", Author.class);
-        AuthorGenreDto author2 = authorRepo.findByName(
-                "Joana Nimar", AuthorGenreDto.class);
-
-        AuthorNameEmailDto author3 = authorRepo.findByName(
-                "Joana Nimar", AuthorNameEmailDto.class);
-
+    public static <T> void listToString(T authorDtoList) {
         ObjectMapper mapper = new ObjectMapper();
         try {
-            System.out.println(mapper.writeValueAsString(author));
-            System.out.println(mapper.writeValueAsString(author2));
-            System.out.println(mapper.writeValueAsString(author3));
+            System.out.println(mapper.writeValueAsString(authorDtoList));
         } catch (JsonProcessingException e) {
             e.printStackTrace();
             // Handle the exception according to your needs
@@ -76,28 +59,5 @@ public class AuthorService {
         }
     }
 
-
-    public void fetchByAge() {
-        List<AuthorNameAge> authorNameAges = authorRepo.fetchByAge(20);
-        for (AuthorNameAge author : authorNameAges) {
-            System.out.println("Author name: " + author.getName()
-                    + " | Age: " + author.years()
-                    + " | Rank: " + author.rank()
-                    + " | Books: " + author.books());
-        }
-        System.out.println(listToString(authorNameAges));
-    }
-
-
-    public static <T> String listToString(List<T> authorDtoList) {
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            return mapper.writeValueAsString(authorDtoList);
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-            // Handle the exception according to your needs
-            return "Error converting to JSON";
-        }
-    }
 
 }
