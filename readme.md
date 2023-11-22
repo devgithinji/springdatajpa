@@ -7480,3 +7480,156 @@ Accessing localhost:8080/authorWithBook returns the following JSON:
  }
 ]
 ```
+
+### How to Map an Entity to a Query via @Subselect
+
+Consider using @Subselect only after you’ve evaluated potential solutions
+based on DTO, DTO + extra queries, or mapping a database view to an entity.
+
+This item talks about mapping an entity to a query via the Hibernate-specific
+@Subselect. Consider these two entities in a bidirectional lazy @OneToMany association,
+as follows:
+
+```
+@Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ @GeneratedValue(strategy = GenerationType.IDENTITY)
+ private Long id;
+ private String name;
+ private String genre;
+ private int age;
+ @OneToMany(cascade = CascadeType.ALL,
+ mappedBy = "author", orphanRemoval = true)
+ private List<Book> books = new ArrayList<>();
+ ...
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ @GeneratedValue(strategy = GenerationType.IDENTITY)
+ private Long id;
+ private String title;
+ private String isbn;
+ @ManyToOne(fetch = FetchType.LAZY)
+ @JoinColumn(name = "author_id")
+ private Author author;
+ ...
+}
+```
+
+An Author wrote several Books. The idea is to write a read-only query to fetch from
+the Author some fields (e.g., id, name, and genre), but to have the possibility to call
+getBooks() and fetch the List<Book> in a lazy manner as well. As you know, a classic
+DTO cannot be used, since such a DTO is not managed and we cannot navigate the
+associations
+
+The Hibernate-specific @Subselect provides a solution to this problem. Via
+@Subselect, the application can map an immutable and read-only entity to a given SQL
+SELECT. Via this entity, the application can fetch the associations on demand (you can
+lazy navigate the associations). The steps to follow are:
+
+
+* Define a new entity that contains only the needed fields from the
+  Author (it’s very important to include the association to Book as well).
+* For all these fields, define only getters
+* Mark this entity as @Immutable since no write operations are allowed.
+* Flush pending state transitions for the used entities using
+  @Synchronize. Hibernate will perform the synchronization before
+  fetching AuthorDto entities.
+* Use @Subselect to write the needed query (map an entity to an SQL
+  query that fetches id, name, and genre, but not books).
+
+Gluing these steps into code produces the following entity:
+
+```
+@Entity
+@Subselect(
+ "SELECT a.id AS id, a.name AS name, a.genre AS genre FROM Author a")
+@Synchronize({"author", "book"})
+@Immutable
+public class AuthorSummary implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ private Long id;
+ private String name;
+ private String genre;
+ @OneToMany(mappedBy = "author")
+ private Set<Book> books = new HashSet<>();
+ public Long getId() {
+ return id;
+ }
+ public String getName() {
+ return name;
+ }
+ public String getGenre() {
+ return genre;
+ }
+ public Set<Book> getBooks() {
+ return books;
+ }
+}
+```
+
+Further, write a classical Spring repository for AuthorSummary:
+
+```
+@Repository
+public interface AuthorDtoRepository
+ extends JpaRepository<AuthorSummary, Long> {
+}
+```
+
+A service-method can fetch an author by ID, and, if the genre of the fetched author is
+equal to the given genre, it fetches the books as well by explicitly calling getBooks():
+
+```
+@Transactional(readOnly = true)
+public void fetchAuthorWithBooksById(long id, String genre) {
+ AuthorSummary author = authorSummaryRepository
+ .findById(id).orElseThrow();
+ System.out.println("Author: " + author.getName());
+ if (author.getGenre().equals(genre)) {
+ // lazy loading the books of this author
+ Set<Book> books = author.getBooks();
+ books.forEach((b) -> System.out.println("Book: "
+ + b.getTitle() + "(" + b.getIsbn() + ")"));
+ }
+}
+```
+
+Consider fetching the author with an ID of 4 and a genre of History
+
+The SQL statements triggered to fetch this data are (this time, instead of a database table
+name, Hibernate uses the provided SQL statement as a sub-SELECT in the FROM clause)
+
+```
+SELECT
+ authordto0_.id AS id1_0_,
+ authordto0_.genre AS genre2_0_,
+ authordto0_.name AS name3_0_
+FROM (SELECT
+ a.id AS id,
+ a.name AS name,
+ a.genre AS genre
+FROM Author a) authordto0_
+```
+
+```
+SELECT
+ books0_.author_id AS author_i4_1_0_,
+ books0_.id AS id1_1_0_,
+ books0_.id AS id1_1_1_,
+ books0_.author_id AS author_i4_1_1_,
+ books0_.isbn AS isbn2_1_1_,
+ books0_.title AS title3_1_1_
+FROM book books0_
+WHERE books0_.author_id = ?
+```
+
+
