@@ -7632,4 +7632,154 @@ FROM book books0_
 WHERE books0_.author_id = ?
 ```
 
+###  How to Fetch DTO via Blaze-Persistence Entity Views
+
+Assume that the application contains the following Author entity. This entity maps an
+author profile:
+
+```
+@Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ @GeneratedValue(strategy = GenerationType.IDENTITY)
+ private Long id;
+ private int age;
+ private String name;
+ private String genre;
+ // getters and setters omitted for brevity
+}
+```
+
+The goal is to fetch only the name and age of all authors. This time, the application relies
+on Blaze Persistence entity views. Blaze Persistence is an open source project meant
+to represent a Rich Criteria API for JPA providers. Being external to Spring Boot, it must
+be added in the application as a dependency. For example, via Maven, you can add the
+following dependencies to pom.xml:
+
+```
+<dependency>
+ <groupId>com.blazebit</groupId>
+ <artifactId>blaze-persistence-integration-entity-view-spring</artifactId>
+ <version>${blaze-persistence.version}</version>
+ <scope>compile</scope>
+</dependency>
+<dependency>
+ <groupId>com.blazebit</groupId>
+ <artifactId>blaze-persistence-integration-spring-data-2.0</artifactId>
+ <version>${blaze-persistence.version}</version>
+ <scope>compile</scope>
+</dependency>
+<dependency>
+ <groupId>com.blazebit</groupId>
+ <artifactId>blaze-persistence-jpa-criteria-api</artifactId>
+ <version>${blaze-persistence.version}</version>
+ <scope>compile</scope>
+</dependency>
+<dependency>
+ <groupId>com.blazebit</groupId>
+ <artifactId>blaze-persistence-integration-hibernate-5.2</artifactId>
+ <version>${blaze-persistence.version}</version>
+ <scope>runtime</scope>
+</dependency>
+<dependency>
+ <groupId>com.blazebit</groupId>
+ <artifactId>blaze-persistence-jpa-criteria-impl</artifactId>
+ <version>${blaze-persistence.version}</version>
+ <scope>runtime</scope>
+</dependency>
+```
+
+Further, configure Blaze-Persistence, CriteriaBuilderFactory, and
+EntityViewManager. This can be accomplished via a classical Spring configuration class
+and @Bean as follows:
+
+```
+@Configuration
+@EnableEntityViews("com.bookstore")
+@EnableJpaRepositories(
+ basePackages = "com.bookstore",
+ repositoryFactoryBeanClass = BlazePersistenceRepositoryFactoryBean.class)
+public class BlazeConfiguration {
+ private final LocalContainerEntityManagerFactoryBean
+ localContainerEntityManagerFactoryBean;
+ public BlazeConfiguration(LocalContainerEntityManagerFactoryBean
+ localContainerEntityManagerFactoryBean) {
+ this.localContainerEntityManagerFactoryBean =
+ localContainerEntityManagerFactoryBean;
+ }
+ @Bean
+ @Scope(ConfigurableBeanFactory.SCOPE_SINGLETON)
+ @Lazy(false)
+ public CriteriaBuilderFactory createCriteriaBuilderFactory() {
+ CriteriaBuilderConfiguration config = Criteria.getDefault();
+ return config.createCriteriaBuilderFactory(
+ localContainerEntityManagerFactoryBean.getObject());
+ }
+ @Bean
+ @Scope(ConfigurableBeanFactory.SCOPE_SINGLETON)
+ @Lazy(false)
+ public EntityViewManager createEntityViewManager(
+ CriteriaBuilderFactory cbf, EntityViewConfiguration
+ entityViewConfiguration) {
+ return entityViewConfiguration.createEntityViewManager(cbf);
+ }
+}
+```
+All the settings are in place. It’s time to exploit Blaze Persistence goodies. The
+application should fetch from the database only the name and age of the authors.
+Therefore, it’s time to write a DTO, or more precisely, an entity view via an interface in
+Blaze-Persistence fashion. The key here consists of annotating the view with `@EntityView(Author.class)`
+
+
+```
+@EntityView(Author.class)
+public interface AuthorView {
+ public String getName();
+ public int getAge();
+}
+```
+
+Further, write a Spring-centric repository by extending EntityViewRepository (this is a
+Blaze Persistence interface):
+
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorViewRepository
+ extends EntityViewRepository<AuthorView, Long> {
+}
+```
+
+The EntityViewRepository interface is a base interface that inherits the most commonly
+used repository methods. Basically, it can be used as any other Spring Data repository.
+For example, you can call findAll() to fetch all authors in AuthorView as follows:
+
+
+```
+@Service
+public class BookstoreService {
+ private final AuthorViewRepository authorViewRepository;
+ public BookstoreService(AuthorViewRepository authorViewRepository) {
+ this.authorViewRepository = authorViewRepository;
+ }
+ public Iterable<AuthorView> fetchAuthors() {
+ return authorViewRepository.findAll();
+ }
+}
+```
+
+Calling the fetchAuthors() method will trigger the following SQL:
+
+```
+SELECT
+ author0_.age AS col_0_0_,
+ author0_.name AS col_1_0_
+FROM author author0_
+```
+
+
+
+
 
