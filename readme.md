@@ -7779,7 +7779,162 @@ SELECT
 FROM author author0_
 ```
 
+### How to Effectively Fetch Parent and Association in One SELECT
+
+Assume that the following two entities, Author and Book, are in a bidirectional lazy
+@OneToMany association (it can be another type of association as well, or it can be
+unidirectional):
+
+```
+@Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ private Long id;
+ private String name;
+ private String genre;
+ private int age;
+ @OneToMany(cascade = CascadeType.ALL,
+ mappedBy = "author", orphanRemoval = true)
+ private List<Book> books = new ArrayList<>();
+ ...
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ private Long id;
+ private String title;
+ private String isbn;
+ @ManyToOne(fetch = FetchType.LAZY)
+ @JoinColumn(name = "author_id")
+ private Author author;
+ ...
+}
+```
+
+This is a lazy association from both directions. Loading an Author will not load its Books,
+and vice versa (loading a Book doesn’t load its Author). This behavior may be okay in some
+cases and not okay in others, depending on the requirements of the current feature.
+
+This time, the goal is to perform the following two queries:
+
+* Fetch an author by name, including their books
+* Fetch a book by ISBN, including the author
 
 
+Having a lazy association between authors and books, the goal can be accomplished in two
+SQL SELECTs. Fetching the author in a SELECT and calling getBooks() will trigger a second
+SELECT to fetch the books. Or, fetching a book in a SELECT and calling getAuthor() will
+trigger a second SELECT to fetch the author. This approach highlights at least two drawbacks:
 
+* The application triggers two SELECTs instead of one.
+* The lazy fetching (the second SELECT) must take place in an active
+Hibernate session to avoid LazyInitializationException (this
+exception occurs if the application calls author.getBooks() or book.
+getAuthor() outside of a Hibernate session).
+
+Obviously, in this case, it will be preferable to fetch the author and book data in a single
+SELECT instead of two. However, the application cannot use an SQL JOIN + DTO because
+it plans to modify these entities.
+
+Therefore, they should be managed by Hibernate. Using
+an SQL JOIN to fetch these entities is not a practical option as well
+
+A naive approach consists of switching the association from LAZY to EAGER
+at the entities-level. This will work, but DON’T DO THIS! As a rule of thumb, use LAZY
+associations and fetch these associations at the query-level via JOIN FETCH (if the
+application plans to modify the fetched entities) or via JOIN + DTO (if the fetched data is
+read-only). In this case, JOIN FETCH is the right choice
+
+JOIN FETCH is specific to JPA and it allows associations (especially useful for collections)
+of values to be initialized along with their parent objects using a single SELECT. In Spring
+style, the goal can be accomplished via two classical repositories and JPQL:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(value = "SELECT a FROM Author a JOIN FETCH a.books
+ WHERE a.name = ?1")
+ Author fetchAuthorWithBooksByName(String name);
+}
+```
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ @Query(value = "SELECT b FROM Book b JOIN FETCH b.author
+ WHERE b.isbn = ?1")
+ Book fetchBookWithAuthorByIsbn(String isbn);
+}
+```
+
+Calling fetchAuthorWithBooksByName() will trigger the following SQL (the Author and
+their Books are loaded in a single SELECT):
+
+
+```
+SELECT
+ author0_.id AS id1_0_0_,
+ books1_.id AS id1_1_1_,
+ author0_.age AS age2_0_0_,
+ author0_.genre AS genre3_0_0_,
+ author0_.name AS name4_0_0_,
+ books1_.author_id AS author_i4_1_1_,
+ books1_.isbn AS isbn2_1_1_,
+ books1_.title AS title3_1_1_,
+ books1_.author_id AS author_i4_1_0__,
+ books1_.id AS id1_1_0__
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+WHERE author0_.name = ?
+```
+
+And calling fetchBookWithAuthorByIsbn() will trigger the following SQL (the Book and
+its Author are loaded in a single SELECT):
+
+```
+SELECT
+ book0_.id AS id1_1_0_,
+ author1_.id AS id1_0_1_,
+ book0_.author_id AS author_i4_1_0_,
+ book0_.isbn AS isbn2_1_0_,
+ book0_.title AS title3_1_0_,
+ author1_.age AS age2_0_1_,
+ author1_.genre AS genre3_0_1_,
+ author1_.name AS name4_0_1_
+FROM book book0_
+INNER JOIN author author1_
+ ON book0_.author_id = author1_.id
+WHERE book0_.isbn = ?
+```
+
+Especially with @OneToMany and @ManyToMany associations, it’s better
+to set up associations as LAZY at the entity-level and fetch this association
+eagerly at the query-level via JOIN FETCH (if the application plans to modify
+the fetched entities) or via JOIN + DTO (if the fetched data is read-only). The
+eager fetching strategy cannot be overridden on a query-basis. Only the lazy
+fetching strategy can be overridden on a query-basis
+
+Joining tables may result in Cartesian products (e.g., CROSS JOIN, where
+each row in the first table is matched with every row in the second table) or
+large result sets.
+
+On the other hand, FetchType.LAZY causes secondary
+queries (N+1). If there are 100 authors and each of them has written five
+books then the Cartesian product query fetches 100 x 5 = 500 rows. On the
+other hand, relying on FetchType.LAZY will cause 100 secondary queries
+(one secondary query for each author).
+
+Fetching multiple one-to-many or
+many-to-many associations may lead to complex Cartesian products or a
+large number of secondary queries. It is better to have a large Cartesian
+product than a large number of database round trips. Nevertheless, if you can
+avoid a large Cartesian product with just a few queries then use these queries.
 
