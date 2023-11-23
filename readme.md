@@ -9065,3 +9065,316 @@ by adjusting the query to fetch the maximum value assigned by DENSE_RANK(), you 
 obtain the total number of authors).
 
 
+### How to Stream the Result Set (in MySQL) and How to Use the Streamable Utility
+
+In this item, we discuss streaming the result set (in MySQL) and using the Streamable
+utility class
+
+#### Stream the Result Set (in MySQL)
+
+Spring Data JPA 1.8 provides support for streaming the result set via the Java 8 Stream
+API (this feature is available in JPA 2.2 as well). For databases that fetch the entire result
+set in a single round trip (e.g., MySQL, SQL Server, PostgreSQL), streaming can cause
+performance penalties. This happens especially when dealing with large result sets. In
+some cases (require benchmarks to identify such cases), the developer can avoid these
+performance issues by:
+
+* Forward-only result set (default in Spring Data)
+* Read-only statement (add @Transactional(readOnly=true))
+* Set the fetch-size value (e.g. 30, or row-by-row)
+* For MySQL, set fetch-size to Integer.MIN_VALUE, or use cursor-based
+streaming by adding useCursorFetch=true to the JDBC URL and
+then set the HINT_FETCH_SIZE hint or call setFetchSize(size) with
+size being the desired number of rows to be fetched each time
+
+Nevertheless, in the case of streaming, the response time grows exponentially with the
+result set size. In such cases, pagination and batching (poll in batches) can perform
+better than streaming a large result set (which requires benchmarks). Data processing
+can be done by stored procedures.
+
+
+As a rule of thumb, strive to keep the JDBC result set as small as possible.
+In web applications, pagination should be preferable! JPA 2.2 supports Java
+1.8 Stream methods, but the execution plan might not be as efficient as when
+using SQL-level pagination.
+
+
+Okay, let’s look at an example based on a simple Author entity. The repository,
+AuthorRepository, exposes a method named streamAll() that returns a
+Stream<Author>:
+
+```
+@Repository
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query("SELECT a FROM Author a")
+ @QueryHints(value = @QueryHint(name = HINT_FETCH_SIZE,
+ value = "" + Integer.MIN_VALUE))
+ Stream<Author> streamAll();
+}
+```
+
+A service method can call streamAll() as follows:
+
+```
+@Transactional(readOnly = true)
+public void streamDatabase() {
+ try ( Stream<Author> authorStream = authorRepository.streamAll()) {
+ authorStream.forEach(System.out::println);
+ }
+}
+```
+
+#### Do Not Confuse Stream with the Streamable Utility
+
+Spring Data allows you to return Streamable (org.springframework.data.util.
+Streamable). This is an alternative to Iterable or any collection type (e.g., List, Set,
+etc.). Streamable comes with several methods that allow you to directly filter (filter()),
+map (map()), flat-map (flatMap()), and so on, over the elements of a Streamable. In
+addition, it allows you to concatenate one or more Streamables via the and() method.
+
+Consider the Author entity and the following query-methods that return Streamable
+(even if these methods rely on the Query Builder mechanism, using @Query is also
+allowed):
+
+
+```
+Streamable<Author> findByGenre(String genre);
+Streamable<Author> findByAgeGreaterThan(int age);
+```
+
+Or you can combine Streamable with Spring projections, as follows:
+
+```
+public interface AuthorName {
+ public String getName();
+}
+```
+
+```
+Streamable<AuthorName> findBy();
+```
+
+Calling these methods from service-methods is quite straightforward:
+
+
+```
+public void fetchAuthorsAsStreamable() {
+ Streamable<Author> authors
+ = authorRepository.findByGenre("Anthology");
+ authors.forEach(System.out::println);
+}
+
+public void fetchAuthorsDtoAsStreamable() {
+ Streamable<AuthorName> authors
+ = authorRepository.findBy();
+ authors.forEach(a -> System.out.println(a.getName()));
+}
+```
+
+Further, you can call the Streamable API methods. From a performance perspective,
+pay attention to the fact that using Streamable in a defective manner is very easy. It is
+very tempting and comfortable to fetch a Streamable result set and chop it via filter(),
+map(),flatMap(), and so on until you obtain only the needed data instead of writing a
+query (e.g., JPQL) that fetches exactly the needed result set from the database. You’re just
+throwing away some of the fetched data to keep only the needed data. Fetching more
+data than needed can cause significant performance penalties.
+
+#### Don’t Fetch More Columns than Needed Just to Drop a Part of them via map( )
+
+Fetching more columns than needed may cause serious performance penalties.
+Therefore don’t use Streamable, as in the following example. You need a read-only
+result set containing only the names of the authors of genre Anthology, but this example
+fetches entities (all columns) and applies the map() method:
+
+
+```
+// don't do this
+public void fetchAuthorsNames() {
+ Streamable<String> authors
+ = authorRepository.findByGenre("Anthology")
+ .map(Author::getName);
+ authors.forEach(System.out::println);
+}
+```
+
+In such a case, use Streamable and a Spring projection to fetch only the name column:
+
+```
+Streamable<AuthorName> queryByGenre(String genre);
+public void fetchAuthorsNames() {
+ Streamable<AuthorName> authors
+ = authorRepository.queryByGenre("Anthology");
+ authors.forEach(a -> System.out.println(a.getName()));
+}
+```
+
+#### Don’t Fetch More Rows than Needed Just to Drop a Part of Them via filter( )
+
+Fetching more rows than needed may cause serious performance penalties as well. Therefore
+don’t use Streamable, as in the following example. You need a result set containing only
+the authors of genre Anthology who are older than 40, but you fetched all authors of genre
+Anthology and then applied the filter() method to keep those older than 40:
+
+
+```
+// don't do this
+public void fetchAuthorsOlderThanAge() {
+ Streamable<Author> authors
+ = authorRepository.findByGenre("Anthology")
+ .filter(a -> a.getAge() > 40);
+ authors.forEach(System.out::println);
+}
+```
+In such a case, simply write the proper JPQL (via the Query Builder mechanism or
+@Query) that filters the data at the database-level and returns only the needed result set:
+
+```
+Streamable<Author> findByGenreAndAgeGreaterThan(String genre, int age);
+
+public void fetchAuthorsOlderThanAge() {
+ Streamable<Author> authors
+ = authorRepository.findByGenreAndAgeGreaterThan("Anthology", 40);
+ authors.forEach(System.out::println);
+}
+```
+
+#### Pay Attention to Concatenating Streamable via and()
+
+Streamable can be used to concatenate/combine query-method results via
+the and() method. For example, let’s concatenate the findByGenre() and
+findByAgeGreaterThan() query-methods:
+
+```
+@Transactional(readOnly = true)
+public void fetchAuthorsByGenreConcatAge() {
+ Streamable<Author> authors
+ = authorRepository.findByGenre("Anthology")
+ .and(authorRepository.findByAgeGreaterThan(40));
+ authors.forEach(System.out::println);
+}
+```
+
+Don’t assume that concatenating these two Streamables trigger a single SQL SELECT
+statement! Each Streamable produces a separate SQL SELECT, as follows:
+
+```
+SELECT
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+WHERE author0_.genre = ?
+
+SELECT
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+WHERE author0_.age > ?
+```
+
+The resulting Streamable concatenates the two result sets into a single one. It’s like
+saying that the first result set contains all authors of the given genre (Anthology), while
+the second result set contains all authors older than the given age (40). The final result
+set contains the concatenation of these results sets.
+
+In other words, if an author has the genre Anthology and is older than 40, then they
+will appear twice in the final result set. This is NOT the same thing (doesn’t produce
+the same result set) as writing something like the following:
+
+```
+@Query("SELECT a FROM Author a WHERE a.genre = ?1 AND a.age > ?2")
+Streamable<Author> fetchByGenreAndAgeGreaterThan(String genre, int age);
+
+@Query("SELECT a FROM Author a WHERE a.genre = ?1 OR a.age > ?2")
+Streamable<Author> fetchByGenreAndAgeGreaterThan(String genre, int age);
+```
+
+Or via the Query Builder mechanism:
+
+```
+Streamable<Author> findByGenreAndAgeGreaterThan(String genre, int age);
+
+Streamable<Author> findByGenreOrAgeGreaterThan(String genre, int age);
+```
+
+So, pay attention to what you are expecting and how you are interpreting the result of
+concatenating two or more Streamables
+
+Moreover, as a rule of thumb, don’t concatenate Streamables if you can obtain the
+needed result set via single SELECT. Additional SELECT statements add pointless
+overhead.
+
+#### How to Return Custom Streamable Wrapper Types
+
+A common practice consists of exposing dedicated wrapper types for collections that
+result from mapping a query result set. This way, upon a single query execution, the API
+can return multiple results. After you call a query-method that returns a collection, you
+can pass it to a wrapper class by manual instantiation of that wrapper-class. You can
+avoid the manual instantiation if the code respects the following key points.
+
+* The type implements Streamable
+* The type exposes a constructor (used next) or a static factory method
+named of(...) or valueOf(...) and takes Streamable as an
+argument
+
+Consider the Book entity with the following persistent fields: id, price, and title. The
+BookRepository contains a single query-method
+
+`Books findBy();`
+
+Notice the return type of the findBy() method. We don’t return a Streamable! We return
+a class representing a custom Streamable wrapper type. The Books class follows the two
+bullets and is shown here:
+
+```
+public class Books implements Streamable<Book> {
+ private final Streamable<Book> streamable;
+ public Books(Streamable<Book> streamable) {
+ this.streamable = streamable;
+ }
+ public Map<Boolean, List<Book>> partitionByPrice(int price) {
+ return streamable.stream()
+ .collect(Collectors.partitioningBy((Book a)
+ -> a.getPrice() >= price));
+ }
+ public int sumPrices() {
+ return streamable.stream()
+ .map(Book::getPrice)
+ .reduce(0, (b1, b2) -> b1 + b2);
+ }
+ public List<BookDto> toBookDto() {
+ return streamable
+ .map(b -> new BookDto(b.getPrice(), b.getTitle()))
+ .toList();
+ }
+ @Override
+ public Iterator<Book> iterator() {
+ return streamable.iterator();
+ }
+}
+```
+
+As you can see, this class exposes three methods that manipulate the passed Streamable
+to return different results: partitionByPrice(), sumPrices(), and toBookDto().
+Further, a service-method can exploit the Books class:
+
+```
+@Transactional
+public List<BookDto> updateBookPrice() {
+ Books books = bookRepository.findBy();
+ int sumPricesBefore = books.sumPrices();
+ System.out.println("Total prices before update: " + sumPricesBefore);
+ Map<Boolean, List<Book>> booksMap = books.partitionByPrice(25);
+
+ booksMap.get(Boolean.TRUE).forEach(
+ a -> a.setPrice(a.getPrice() + 3));
+ booksMap.get(Boolean.FALSE).forEach(
+ a -> a.setPrice(a.getPrice() + 5));
+ int sumPricesAfter = books.sumPrices();
+ System.out.println("Total prices after update: " + sumPricesAfter);
+ return books.toBookDto();
+}
+```
