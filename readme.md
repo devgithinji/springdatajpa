@@ -8427,10 +8427,311 @@ INNER JOIN book book1_
 WHERE book1_.price = ?
 ```
 
+### How to Write JOIN Statements
+
+A brief overview of JOIN statements should bring into discussion the three main types of
+joins:
+
+* INNER
+* OUTER
+* CROSS
+
+INNER JOIN is useful for fetching data if it’s present in both tables.
+
+OUTER JOIN can be:
+* LEFT OUTER JOIN: Fetches data present in the left table
+* RIGHT OUTER JOIN: Fetches data present in the right table
+* FULL OUTER JOIN: fetches data present in either of the two tables (can
+be inclusive or exclusive)
+* CROSS JOIN: Joins everything with everything; a CROSS JOIN that does
+not have an ON or WHERE clause gives the Cartesian product
+
+In a query (JPQL/SQL), specifying JOIN means INNER JOIN. Specifying LEFT/RIGHT/FULL
+JOIN means LEFT/RIGHT/FULL OUTER JOIN.
+
+SQL JOIN statements are the best approach for mitigating the famous
+LazyInitializationException. Moreover, in the case of read-only data, combining
+SQL JOIN statements and DTO (e.g., Spring projections) represents the best approach
+for fetching data from multiple tables
+
+Commonly, SQL JOIN statements are represented
+via Venn diagrams (even if this may not be the best representation, it’s very easy to
+understand)
+
+Venn diagrams for SQL JOINs
+
+![img.png](assets/imgsfrtrytr.png)
+
+Using the Author and Book entities involved in a bidirectional lazy @OneToMany
+association, consider a Spring projection (DTO) that fetches the names of authors and
+titles of books:
+
+```
+public interface AuthorNameBookTitle {
+ String getName();
+ String getTitle();
+}
+```
+
+#### INNER JOIN
+
+Considering that the author table is table A and the book table is table B, an INNER JOIN
+expressed via JPQL can be written as follows:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Author a INNER JOIN a.books b")
+List<AuthorNameBookTitle> findAuthorsAndBooksJpql();
+```
+
+Or assume that book is table A and author is table B:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Book b INNER JOIN b.author a")
+List<AuthorNameBookTitle> findBooksAndAuthorsJpql();
+```
+
+As native SQL:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM author a INNER JOIN book b ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findAuthorsAndBooksSql();
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM book b INNER JOIN author a ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findBooksAndAuthorsSql();
+```
+
+Adding a WHERE clause can help you filter the result set. For example, let’s filter the result
+set by the author’s genre and the book’s price:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Author a INNER JOIN a.books b "
+ + "WHERE a.genre = ?1 AND b.price < ?2")
+List<AuthorNameBookTitle> findAuthorsAndBooksByGenreAndPriceJpql(
+ String genre, int price);
+```
+
+In native SQL:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM author a INNER JOIN book b ON a.id = b.author_id "
+ + "WHERE a.genre = ?1 AND b.price < ?2",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findBooksAndAuthorsByGenreAndPriceSql(
+ String genre, int price);
+```
+
+#### LEFT JOIN
+
+Considering that the author table is table A and the book table is table B, a LEFT JOIN
+expressed via JPQL can be written as follows:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Author a LEFT JOIN a.books b")
+List<AuthorNameBookTitle> findAuthorsAndBooksJpql();
+```
+
+Or assume that book is table A and author is table B:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Book b LEFT JOIN b.author a")
+List<AuthorNameBookTitle> findBooksAndAuthorsJpql();
+```
+
+As native SQL:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM author a LEFT JOIN book b ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findAuthorsAndBooksSql();
+
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM book b LEFT JOIN author a ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findBooksAndAuthorsSql();
+```
+
+#### RIGHT JOIN
+
+Assume that the author table is table A and the book table is table B. A RIGHT JOIN
+expressed via JPQL can be written as follows:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Author a RIGHT JOIN a.books b")
+List<AuthorNameBookTitle> findAuthorsAndBooksJpql();
+```
+
+Or assume that book is table A and author is table B:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Book b RIGHT JOIN b.author a")
+List<AuthorNameBookTitle> findBooksAndAuthorsJpql();
+```
+
+As native SQL:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM author a RIGHT JOIN book b ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findAuthorsAndBooksSql();
+
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM book b RIGHT JOIN author a ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findBooksAndAuthorsSql();
+```
+
+#### CROSS JOIN
+
+A CROSS JOIN does not have an ON or WHERE clause and returns the Cartesian product.
+Let’s assume that you have the Book and the Format entities (the Format entity has a
+formatType field that represents a specific book format—e.g., paperback, PDF, kindle,
+etc.). There is no relationship between these entities.
+
+Considering that the book table is table A and the format table is table B, a CROSS JOIN
+expressed via JPQL can be written as follows
+
+```
+@Query(value = "SELECT b.title AS title, f.formatType AS formatType "
+ + "FROM Book b, Format f")
+List<BookTitleAndFormatType> findBooksAndFormatsJpql();
+```
+
+Or assume that format is table A and book is table B:
+
+```
+@Query(value = "SELECT b.title AS title, f.formatType AS formatType "
+ + "FROM Format f, Book b")
+List<BookTitleAndFormatType> findFormatsAndBooksJpql();
+```
+
+As native SQL:
+
+```
+@Query(value = "SELECT b.title AS title, f.format_type AS formatType "
+ + "FROM format f CROSS JOIN book b",
+ nativeQuery = true)
+List<BookTitleAndFormatType> findFormatsAndBooksSql();
+
+@Query(value = "SELECT b.title AS title, f.format_type AS formatType "
+ + "FROM book b CROSS JOIN format f",
+ nativeQuery = true)
+List<BookTitleAndFormatType> findBooksAndFormatsSql();
+```
+
+The BookTitleAndFormatType is a simple Spring projection:
+
+```
+public interface BookTitleAndFormatType {
+ String getTitle();
+ String getFormatType();
+}
+```
+
+Pay attention to implicit JOIN statements in *-to-one associations. These
+kinds of JOIN statements will execute a CROSS JOIN not an INNER JOIN
+as you may expect. For example, consider the following JPQL:
+
+```
+@Query(value = "SELECT b.title AS title, b.author.name
+ AS name FROM Book b")
+List<AuthorNameBookTitle> findBooksAndAuthorsJpql();
+```
+
+This implicit JOIN results in a CROSS JOIN with an WHERE clause, not in a
+INNER JOIN:
+
+```
+SELECT
+ book0_.title AS col_0_0_,
+ author1_.name AS col_1_0_
+FROM book book0_
+CROSS JOIN author author1_
+WHERE book0_.author_id = author1_.id
+```
+
+As a rule of thumb, to avoid such cases, it’s better to rely on explicit JOIN
+statements. If you fetch entities, rely on JOIN FETCH. Also, always
+check the SQL statements generated via Criteria API, since they are prone to
+contain unwanted CROSS JOINs as well.
+
+#### FULL JOIN
+
+MySQL doesn’t support FULL JOINs. The examples in this section were
+tested on PostgreSQL.
+
+Assume the author table is table A and the book table is table B. An inclusive FULL JOIN
+expressed via JPQL can be written as follows:
 
 
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Author a FULL JOIN a.books b")
+List<AuthorNameBookTitle> findAuthorsAndBooksJpql();
+```
 
+Or assume that book is table A and author is table B:
 
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM Book b FULL JOIN b.author a")
+List<AuthorNameBookTitle> findBooksAndAuthorsJpql();
+```
 
+As native SQL:
+
+```
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM author a FULL JOIN book b ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findAuthorsAndBooksSql();
+
+@Query(value = "SELECT b.title AS title, a.name AS name "
+ + "FROM book b FULL JOIN author a ON a.id = b.author_id",
+ nativeQuery = true)
+List<AuthorNameBookTitle> findBooksAndAuthorsSql();
+```
+
+#### Simulate a FULL JOIN in MySQL
+
+MySQL doesn’t provide support for FULL JOINs, but there are a few ways you can
+simulate FULL JOINs.
+The best approach relies on UNION or UNION ALL. The difference
+between them consists of the fact that UNION removes duplicates while UNION ALL
+returns duplicates as well.
+
+JPA doesn’t support the UNION clause; therefore, you need to use native SQL. The idea is
+to simulate an inclusive FULL JOIN via a UNION of two outer joins, as follows:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(value = "(SELECT b.title AS title, a.name AS name FROM author a "
+ + "LEFT JOIN book b ON a.id = b.author_id) "
+ + "UNION "
+ + "(SELECT b.title AS title, a.name AS name FROM author a "
+ + "RIGHT JOIN book b ON a.id = b.author_id "
+ + "WHERE a.id IS NULL)",
+ nativeQuery = true)
+ List<AuthorNameBookTitle> findAuthorsAndBooksSql();
+}
+```
+
+This query uses UNION; therefore, it removes duplicates. Nevertheless, there
+are legitimate cases where duplicate results are expected. For such cases,
+use UNION ALL instead of UNION.
 
 
