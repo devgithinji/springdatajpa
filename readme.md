@@ -7938,3 +7938,384 @@ large number of secondary queries. It is better to have a large Cartesian
 product than a large number of database round trips. Nevertheless, if you can
 avoid a large Cartesian product with just a few queries then use these queries.
 
+### How to Decide Between JOIN and JOIN FETCH
+
+Typically, JOIN and JOIN FETCH come into play when the application has lazy
+associations but some data must be fetched eagerly. Relying on FetchType.EAGER at the
+entities-level is a code smell.
+
+Assume the well-known Author and Book entities that are
+involved in a bidirectional lazy @OneToMany association:
+
+```
+ @Entity
+public class Author implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ private Long id;
+ private String name;
+ private String genre;
+ private int age;
+ @OneToMany(cascade = CascadeType.ALL,
+ mappedBy = "author", orphanRemoval = true)
+ private List<Book> books = new ArrayList<>();
+ ...
+}
+```
+
+```
+@Entity
+public class Book implements Serializable {
+ private static final long serialVersionUID = 1L;
+ @Id
+ private Long id;
+ private String title;
+ private String isbn;
+ @ManyToOne(fetch = FetchType.LAZY)
+ @JoinColumn(name = "author_id")
+ private Author author;
+ ...
+}
+```
+
+The goal is to fetch the following data as entities:
+
+* All Authors and their Books that are more expensive than the given
+  price
+* All the Books and their Authors
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ // INNER JOIN
+ @Query(value = "SELECT a FROM Author a INNER JOIN a.books b
+ WHERE b.price > ?1")
+ List<Author> fetchAuthorsBooksByPriceInnerJoin(int price);
+ // JOIN FETCH
+ @Query(value = "SELECT a FROM Author a JOIN FETCH a.books b
+ WHERE b.price > ?1")
+ List<Author> fetchAuthorsBooksByPriceJoinFetch(int price);
+}
+```
+
+You can call these repository-methods and display the fetched data to the console, as
+follows:
+
+```
+public void fetchAuthorsBooksByPriceJoinFetch() {
+ List<Author> authors =
+ authorRepository.fetchAuthorsBooksByPriceJoinFetch(40);
+ authors.forEach((e) -> System.out.println("Author name: "
+ + e.getName() + ", books: " + e.getBooks()));
+}
+
+@Transactional(readOnly = true)
+public void fetchAuthorsBooksByPriceInnerJoin() {
+ List<Author> authors =
+ authorRepository.fetchAuthorsBooksByPriceInnerJoin(40);
+ authors.forEach((e) -> System.out.println("Author name: "
+ + e.getName() + ", books: " + e.getBooks()));
+}
+```
+
+#### How JOIN FETCH Will Act
+
+JOIN FETCH is specific to JPA and it allows associations to be initialized along
+with their parent objects using a single SELECT. As you will see soon, this is
+particularly useful when fetching associated collections. This means that calling
+fetchAuthorsBooksByPriceJoinFetch() will trigger a single SELECT, as follows:
+
+```
+SELECT
+ author0_.id AS id1_0_0_,
+ books1_.id AS id1_1_1_,
+ author0_.age AS age2_0_0_,
+ author0_.genre AS genre3_0_0_,
+ author0_.name AS name4_0_0_,
+ books1_.author_id AS author_i5_1_1_,
+ books1_.isbn AS isbn2_1_1_,
+ books1_.price AS price3_1_1_,
+ books1_.title AS title4_1_1_,
+ books1_.author_id AS author_i5_1_0__,
+ books1_.id AS id1_1_0__
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+WHERE books1_.price > ?
+```
+
+Running this SQL against the data sample for a given price of 40 dollars will fetch the
+following data (displays the authors’ names and books):
+
+```
+Author name: Joana Nimar,
+ books: [Book{id=2, title=A People's History, isbn=002-JN, price=41}]
+```
+
+This looks correct! There is a single book in the database more expensive than 40 dollars
+and its author is Joana Nimar.
+
+
+#### How JOIN Will Act
+
+On the other hand, JOIN doesn’t allow associated collections to be initialized
+along with their parent objects using a single SELECT. This means that calling
+fetchAuthorsBooksByPriceInnerJoin() will result in the following SELECT (the SQL
+reveals that no book was loaded):
+
+```
+SELECT
+ author0_.id AS id1_0_,
+ author0_.age AS age2_0_,
+ author0_.genre AS genre3_0_,
+ author0_.name AS name4_0_
+FROM author author0_
+INNER JOIN book books1_
+ ON author0_.id = books1_.author_id
+WHERE books1_.price > ?
+```
+
+Running this SQL against the data sample will fetch a single author (Joana Nimar),
+which is correct. Attempting to display the books written by Joana Nimar via getBooks()
+will trigger an additional SELECT, as follows:
+
+```
+SELECT
+ books0_.author_id AS author_i5_1_0_,
+ books0_.id AS id1_1_0_,
+ books0_.id AS id1_1_1_,
+ books0_.author_id AS author_i5_1_1_,
+ books0_.isbn AS isbn2_1_1_,
+ books0_.price AS price3_1_1_,
+ books0_.title AS title4_1_1_
+FROM book books0_
+WHERE books0_.author_id = ?
+```
+
+Writing this query doesn’t help either:
+
+```
+@Query(value = "SELECT a, b FROM Author a
+ INNER JOIN a.books b WHERE b.price > ?1")
+```
+
+Display the author name and the fetched books:
+
+```
+Author name: Joana Nimar,
+ books: [
+ Book{id=1, title=A History of Ancient Prague, isbn=001-JN, price=36},
+ Book{id=2, title=A People's History, isbn=002-JN, price=41}
+ ]
+```
+
+Two things must be highlighted here: an important drawback and a potential confusion.
+
+* **First**, the drawback. Notice that JOIN has fetched the books in an additional SELECT. This
+can be considered a performance penalty in comparison to JOIN FETCH, which needs a
+single SELECT, and therefore a single database round trip.
+
+* **Second**, a potential confusion. Pay extra attention to the interpretation of the WHERE
+books1_.price > ? clause in the first SELECT. While the application fetches only the
+authors who have written books that are more expensive than 40 dollars, when calling
+getBooks(), the application fetches all the books of these authors, not only the books
+more expensive than 40 dollars. This is normal since, when getBooks() is called, the
+WHERE clause is not there anymore. Therefore, in this case, JOIN produced a different
+result than JOIN FETCH.
+
+
+#### Fetch All Books and their Authors
+
+To satisfy the second query (all the Books and their Authors), write a Spring repository
+and a BookRepository and then add two JOINs and a JOIN FETCH query:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ // INNER JOIN BAD
+ @Query(value = "SELECT b FROM Book b INNER JOIN b.author a")
+ List<Book> fetchBooksAuthorsInnerJoinBad();
+ // INNER JOIN GOOD
+ @Query(value = "SELECT b, a FROM Book b INNER JOIN b.author a")
+ List<Book> fetchBooksAuthorsInnerJoinGood();
+ // JOIN FETCH
+ @Query(value = "SELECT b FROM Book b JOIN FETCH b.author a")
+ List<Book> fetchBooksAuthorsJoinFetch();
+}
+```
+
+You can call these methods and display the fetched data to the console, as follows:
+
+```
+public void fetchBooksAuthorsJoinFetch() {
+ List<Book> books = bookRepository.fetchBooksAuthorsJoinFetch();
+ books.forEach((e) -> System.out.println("Book title: " + e.getTitle()
+ + ", Isbn:" + e.getIsbn() + ", author: " + e.getAuthor()));
+}
+```
+
+```
+@Transactional(readOnly = true)
+public void fetchBooksAuthorsInnerJoinBad/Good() {
+ List<Book> books = bookRepository.fetchBooksAuthorsInnerJoinBad/Good();
+ books.forEach((e) -> System.out.println("Book title: " + e.getTitle()
+ + ", Isbn: " + e.getIsbn() + ", author: " + e.getAuthor()));
+}
+```
+
+#### How JOIN FETCH Will Act
+
+Calling fetchBooksAuthorsJoinFetch() will trigger a single SQL triggered as follows (all
+authors and books are fetched in a single SELECT):
+
+```
+SELECT
+ book0_.id AS id1_1_0_,
+ author1_.id AS id1_0_1_,
+ book0_.author_id AS author_i5_1_0_,
+ book0_.isbn AS isbn2_1_0_,
+ book0_.price AS price3_1_0_,
+ book0_.title AS title4_1_0_,
+ author1_.age AS age2_0_1_,
+ author1_.genre AS genre3_0_1_,
+ author1_.name AS name4_0_1_
+FROM book book0_
+INNER JOIN author author1_
+ ON book0_.author_id = author1_.id
+```
+
+Running this SQL against the data sample will output the following (displays only the
+book title, ISBN, and author):
+
+```
+Book title: A History of Ancient Prague, Isbn:001-JN,
+ author: Author{id=4, name=Joana Nimar, genre=History, age=34}
+Book title: A People's History, Isbn:002-JN,
+ author: Author{id=4, name=Joana Nimar, genre=History, age=34}
+Book title: The Beatles Anthology, Isbn:001-MJ,
+ author: Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+Book title: Carrie, Isbn:001-OG,
+ author: Author{id=2, name=Olivia Goy, genre=Horror, age=43}
+```
+
+Everything looks as expected! There are four books and each of them has an author.
+
+
+#### How JOIN Will Act
+
+On the other hand, calling fetchBooksAuthorsInnerJoinBad() will trigger a single SQL
+as follows (the SQL reveals that no author was loaded):
+
+```
+SELECT
+ book0_.id AS id1_1_,
+ book0_.author_id AS author_i5_1_,
+ book0_.isbn AS isbn2_1_,
+ book0_.price AS price3_1_,
+ book0_.title AS title4_1_
+FROM book book0_
+INNER JOIN author author1_
+ ON book0_.author_id = author1_.id
+```
+
+
+The returned List<Book> contains four Books. Looping this list and fetching the author
+of each book via getAuthor() will trigger three additional SELECT statements. There
+are three SELECT statements instead of four because two of the books have the same
+author. Therefore, for the second of these two books, the author will be fetched from the
+Persistence Context. So, this SELECT is triggered three times with different id values:
+
+```
+SELECT
+ author0_.id AS id1_0_0_,
+ author0_.age AS age2_0_0_,
+ author0_.genre AS genre3_0_0_,
+ author0_.name AS name4_0_0_
+FROM author author0_
+WHERE author0_.id = ?
+```
+
+Displaying the title, ISBN, and author of each book will output the following:
+
+```
+Book title: A History of Ancient Prague, Isbn: 001-JN,
+ author: Author{id=4, name=Joana Nimar, genre=History, age=34}
+Book title: A People's History, Isbn: 002-JN,
+ author: Author{id=4, name=Joana Nimar, genre=History, age=34}
+Book title: The Beatles Anthology, Isbn: 001-MJ,
+ author: Author{id=1, name=Mark Janel, genre=Anthology, age=23}
+Book title: Carrie, Isbn: 001-OG,
+ author: Author{id=2, name=Olivia Goy, genre=Horror, age=43}
+```
+
+In this case, the performance penalty is obvious. While JOIN FETCH needs a single
+SELECT, JOIN needs four SELECT statements
+
+
+How about calling fetchBooksAuthorsInnerJoinGood()? Well, this will produce
+the exact same query and result as JOIN FETCH. This is working because the fetched
+association is not a collection. So, in this case, you can use JOIN or JOIN FETCH.
+
+
+As a rule of thumb, use JOIN FETCH (not JOIN) whenever the data should
+be fetched as entities (because the application plans to modify them) and
+Hibernate should include the associations in the SELECT clause.
+
+In such scenarios,
+using JOIN is prone to N+1 performance penalties.
+
+On the other hand,
+whenever you’re fetching read-only data (you don’t plan to modify it), it’s
+better rely on JOIN + DTO instead of JOIN FETCH.
+
+JOIN FETCH is typically used when you want to fetch associated entities eagerly to avoid the N+1 query problem, but it's not suitable for navigating through properties within a collection. Use regular JOIN clauses for that purpose.
+
+example the following queries wont work
+
+```
+SELECT a.age as age FROM Author a JOIN FETCH a.books
+```
+
+Causes: org.hibernate.QueryException: query specified join
+fetching, but the owner of the fetched association was
+not present in the select list
+
+So, to fix the issue, you should use the first form of the query where you select the entire entity:
+
+```
+SELECT a FROM Author a JOIN FETCH a.books
+```
+
+error 2
+
+```
+SELECT a FROM Author a JOIN FETCH a.books.title
+```
+
+Causes: org.hibernate.QueryException: illegal attempt to
+dereference collection [author0_.id.books] with element
+property reference [title]
+
+
+The error you're encountering suggests that you're trying to dereference a collection (a.books) with an element property reference (title). Dereferencing a collection like this is not allowed in Hibernate.
+
+The JOIN FETCH clause in Hibernate is used to eagerly fetch associations, but it's typically applied to associations between entities, not to properties within a collection.
+
+If you need the entire Author entity with its associated books and want to access the titles of those books, you can use a query like this:
+
+```
+SELECT a, b.title FROM Author a JOIN a.books b
+```
+
+
+
+
+
+
+
+
+
+
+
