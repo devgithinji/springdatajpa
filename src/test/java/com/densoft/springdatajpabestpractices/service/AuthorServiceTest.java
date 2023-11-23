@@ -15,24 +15,13 @@ class AuthorServiceTest {
         authorService.createAuthor();
     }
 
-
     @Test
-    void fetchAll() {
-        authorService.fetchAll();
+    void fetchByGenre() {
+        authorService.fetchByGenre();
     }
 
     @Test
-    void fetchAgeNameGenre() {
-        authorService.fetchAgeNameGenre();
-    }
-
-    @Test
-    void fetchNameAndEmail() {
-        authorService.fetchNameAndEmail();
-    }
-
-    @Test
-    void fetchByName() {
-        authorService.fetchByName();
+    void fetchAuthors() {
+        authorService.fetchAuthors();
     }
 }
