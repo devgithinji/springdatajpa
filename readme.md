@@ -8309,8 +8309,123 @@ If you need the entire Author entity with its associated books and want to acces
 SELECT a, b.title FROM Author a JOIN a.books b
 ```
 
+### How to Fetch All Left Entities
+
+Consider the well-known Author and Book entities that are involved in a bidirectional
+lazy one-to-many association
+
+it’s clear that fetching an entity and its lazy associations (specifically, the
+associated collections) in a single SELECT is the perfect job for JOIN FETCH.
+
+JOIN FETCH is transformed in an INNER JOIN. Therefore, the result set includes the rows
+of the entity or table referenced on the left side of the statement that match the entity or
+table referenced on the right side of the statement.
+
+You can fetch all rows of the entity or
+table referenced on the left side of the statement in plain SQL via LEFT JOIN. LEFT JOIN
+will not fetch the associated collections in the same SELECT.
+
+So, the solution should combine the advantages brought by JOIN FETCH and LEFT JOIN
+and should eliminate their disadvantages. This is perfectly achievable via LEFT JOIN
+FETCH as in the following repository
 
 
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(value = "SELECT a FROM Author a LEFT JOIN FETCH a.books")
+ List<Author> fetchAuthorWithBooks();
+}
+```
+
+Calling fetchAuthorWithBooks() will trigger the following SQL (notice the presence of
+LEFT OUTER JOIN):
+
+```
+SELECT
+ author0_.id AS id1_0_0_,
+ books1_.id AS id1_1_1_,
+ author0_.age AS age2_0_0_,
+ author0_.genre AS genre3_0_0_,
+ author0_.name AS name4_0_0_,
+ books1_.author_id AS author_i4_1_1_,
+ books1_.isbn AS isbn2_1_1_,
+ books1_.title AS title3_1_1_,
+ books1_.author_id AS author_i4_1_0__,
+ books1_.id AS id1_1_0__
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ ON author0_.id = books1_.author_id
+```
+
+Or the BookRepository:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface BookRepository extends JpaRepository<Book, Long> {
+ @Query(value = "SELECT b FROM Book b LEFT JOIN FETCH b.author")
+ // or, via JOIN
+ // @Query(value = "SELECT b, a FROM Book b LEFT JOIN b.author a")
+ List<Book> fetchBookWithAuthor();
+}
+```
+
+Calling fetchBookWithAuthor() will trigger the following SQL (notice the presence of
+LEFT OUTER JOIN):
+
+```
+SELECT
+ book0_.id AS id1_1_0_,
+ author1_.id AS id1_0_1_,
+ book0_.author_id AS author_i4_1_0_,
+ book0_.isbn AS isbn2_1_0_,
+ book0_.title AS title3_1_0_,
+ author1_.age AS age2_0_1_,
+ author1_.genre AS genre3_0_1_,
+ author1_.name AS name4_0_1_
+FROM book book0_
+LEFT OUTER JOIN author author1_
+ ON book0_.author_id = author1_.id
+```
+
+###  How to Fetch DTO from Unrelated Entities
+
+Unrelated entities are entities that don’t have an explicit association between them. 
+
+![img.png](assets/imgfsdgddfgfd.png)
+
+However, notice that both tables have the name column. This is the name of the author.
+The goal is to fetch a DTO (Spring projection) that contains the author’s names and book
+titles where the price is equal to the given value
+
+Hibernate 5.1 introduced explicit joins on unrelated entities and the syntax and behavior
+are similar to SQL JOIN statements. For example, the following query is useful in this
+case:
+
+```
+@Repository
+@Transactional(readOnly = true)
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+ @Query(value = "SELECT a.name AS name, b.title AS title "
+ + "FROM Author a INNER JOIN Book b ON a.name = b.name "
+ + "WHERE b.price = ?1")
+ List<BookstoreDto> fetchAuthorNameBookTitleWithPrice(int price);
+}
+```
+
+The SQL statement is:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ book1_.title AS col_1_0_
+FROM author author0_
+INNER JOIN book book1_
+ ON (author0_.name = book1_.name)
+WHERE book1_.price = ?
+```
 
 
 
