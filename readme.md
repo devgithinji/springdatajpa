@@ -3,149 +3,152 @@
 ## Table of contents
 
 <!-- TOC -->
+
 * [<p style="color: #2563EB">Spring Data JPA Best Practices</p>](#p-stylecolor-2563ebspring-data-jpa-best-practicesp)
-  * [Table of contents](#table-of-contents)
+    * [Table of contents](#table-of-contents)
 * [Associations](#associations)
-  * [How to effectively shape the @OneToMany Associations](#how-to-effectively-shape-the-onetomany-associations)
-    * [Best way to code a bidirectional @OneToMany association](#best-way-to-code-a-bidirectional-onetomany-association)
-  * [Why should you avoid the unidirectional @OneToMany Association](#why-should-you-avoid-the-unidirectional-onetomany-association)
-    * [Regular Unidirectional @OneToMany](#regular-unidirectional-onetomany)
-      * [Persisting Author and their books](#persisting-author-and-their-books)
-      * [Persisting a new book of an existing author](#persisting-a-new-book-of-an-existing-author)
-      * [Deleting the last book](#deleting-the-last-book)
-      * [Deleting the first book](#deleting-the-first-book)
-    * [Using @OrderColumn](#using-ordercolumn)
-      * [Persist the Author and Books](#persist-the-author-and-books)
-      * [Persist a New Book of an Existing Author](#persist-a-new-book-of-an-existing-author)
-      * [Delete the Last Book](#delete-the-last-book)
-      * [Delete the First Book](#delete-the-first-book)
-    * [@JoinColumn](#joincolumn)
-      * [Persist the author and the books](#persist-the-author-and-the-books)
-      * [Persist a New Book of an Existing Author](#persist-a-new-book-of-an-existing-author-1)
-      * [Delete the Last Book](#delete-the-last-book-1)
-      * [Delete the First Book](#delete-the-first-book-1)
-  * [How Efficient Is the Unidirectional @ManyToOne](#how-efficient-is-the-unidirectional-manytoone)
-    * [Adding a New Book to a Certain Author](#adding-a-new-book-to-a-certain-author)
-    * [Fetching All Books of an Author](#fetching-all-books-of-an-author)
-    * [Paging the Books of an Author](#paging-the-books-of-an-author)
-    * [Fetching All Books of an Author and Adding a New Book](#fetching-all-books-of-an-author-and-adding-a-new-book)
-    * [Fetching all Books of an Author and Deleting a Book](#fetching-all-books-of-an-author-and-deleting-a-book)
-  * [How to Effectively Shape the @ManyToMany Association](#how-to-effectively-shape-the-manytomany-association)
-    * [The best way to code a bidirectional @ManyToMany association is described in the following sections.](#the-best-way-to-code-a-bidirectional-manytomany-association-is-described-in-the-following-sections)
-      * [Choose the Owner of the Relationship](#choose-the-owner-of-the-relationship)
-      * [Always Use Set not List](#always-use-set-not-list)
-      * [Keep Both Sides of the Association in Sync](#keep-both-sides-of-the-association-in-sync)
-      * [Avoid CascadeType.ALL and CascadeType.REMOVE](#avoid-cascadetypeall-and-cascadetyperemove)
-      * [Setting Up the Join Table](#setting-up-the-join-table)
-      * [Using Lazy Fetching on Both Sides of the Association](#using-lazy-fetching-on-both-sides-of-the-association)
-      * [Override equals() and hashCode()](#override-equals-and-hashcode)
-      * [Pay Attention to How toString() Is Overridden](#pay-attention-to-how-tostring-is-overridden)
-  * [Why Set Is Better than List in @ManyToMany](#why-set-is-better-than-list-in-manytomany)
-    * [Using List](#using-list)
-    * [Using set](#using-set)
-    * [Preserving the Order of the Result Set](#preserving-the-order-of-the-result-set)
-      * [Using @OrderBy](#using-orderby)
-  * [Why and When to Avoid Removing Child Entities with CascadeType.Remove and orphanRemoval=true](#why-and-when-to-avoid-removing-child-entities-with-cascadetyperemove-and-orphanremovaltrue)
-    * [Deleting Authors that Are Already Loaded in the Persistence Context](#deleting-authors-that-are-already-loaded-in-the-persistence-context)
-    * [One Author Has Already Been Loaded in the Persistence Context](#one-author-has-already-been-loaded-in-the-persistence-context)
-    * [More Authors Have Been Loaded in the Persistence Context](#more-authors-have-been-loaded-in-the-persistence-context)
-    * [One Author and His Associated Books Have Been Loaded in the Persistence Context](#one-author-and-his-associated-books-have-been-loaded-in-the-persistence-context)
-    * [Deleting When the Author and Books that Should Be Deleted Are Not Loaded in the Persistence Context](#deleting-when-the-author-and-books-that-should-be-deleted-are-not-loaded-in-the-persistence-context)
-  * [How to Fetch Associations via JPA Entity Graphs](#how-to-fetch-associations-via-jpa-entity-graphs)
-    * [Defining an Entity Graph via @NamedEntityGraph](#defining-an-entity-graph-via-namedentitygraph)
-    * [Overriding a Query Method](#overriding-a-query-method)
-    * [Using the Query Builder Mechanism](#using-the-query-builder-mechanism)
-    * [Using Specification](#using-specification)
-    * [Using @Query and JPQL](#using-query-and-jpql)
-    * [consider](#consider)
-    * [Ad Hoc Entity Graphs](#ad-hoc-entity-graphs)
-    * [Defining an Entity Graph via EntityManager](#defining-an-entity-graph-via-entitymanager)
-  * [How to Fetch Associations via Entity Sub-Graphs](#how-to-fetch-associations-via-entity-sub-graphs)
-    * [Using @NamedEntityGraph and @NamedSubgraph](#using-namedentitygraph-and-namedsubgraph)
-    * [Using the Dot Notation (.) in Ad Hoc Entity Graphs](#using-the-dot-notation--in-ad-hoc-entity-graphs)
-    * [Defining an Entity Sub-Graph via EntityManager](#defining-an-entity-sub-graph-via-entitymanager)
-  * [How to Handle Entity Graphs and Basic Attributes](#how-to-handle-entity-graphs-and-basic-attributes)
-  * [How to Filter Associations via a Hibernate-Specific @Where Annotation](#how-to-filter-associations-via-a-hibernate-specific-where-annotation)
-  * [How to Optimize Unidirectional/ Bidirectional @OneToOne via @MapsId](#how-to-optimize-unidirectional-bidirectional-onetoone-via-mapsid)
-    * [Regular Unidirectional @OneToOne](#regular-unidirectional-onetoone)
-    * [Regular Bidirectional @OneToOne](#regular-bidirectional-onetoone)
-    * [@MapsId to the Rescue of @OneToOne](#mapsid-to-the-rescue-of-onetoone)
-  * [How to Validate that Only One Association Is Non-Null](#how-to-validate-that-only-one-association-is-non-null)
-    * [Testing Time](#testing-time)
-  * [Entities](#entities)
-    * [How to Adopt a Fluent API Style in Entities](#how-to-adopt-a-fluent-api-style-in-entities)
-      * [Fluent-Style via Entity Setters](#fluent-style-via-entity-setters)
-      * [Fluent-Style via Additional Methods](#fluent-style-via-additional-methods)
-    * [How to Populate a Child-Side Parent Association via a Hibernate-Specific Proxy](#how-to-populate-a-child-side-parent-association-via-a-hibernate-specific-proxy)
-      * [Using findById()](#using-findbyid)
-      * [Using getOne()](#using-getone)
-    * [How to Use Java 8 Optional in Persistence Layer](#how-to-use-java-8-optional-in-persistence-layer)
-      * [Optional in Entities](#optional-in-entities)
-      * [Optional in Repositories](#optional-in-repositories)
-    * [How to Write Immutable Entities](#how-to-write-immutable-entities)
-        * [**Financial Transactions**:](#financial-transactions)
-        * [**Configuration Parameters**:](#configuration-parameters)
-        * [**Immutable Collections**:](#immutable-collections)
-        * [**Thread Safety**:](#thread-safety)
-        * [**Event Sourcing**:](#event-sourcing)
-    * [How to Clone Entities](#how-to-clone-entities)
-      * [Cloning the Parent and Associating the Books](#cloning-the-parent-and-associating-the-books)
-      * [Cloning the Parent and the Books](#cloning-the-parent-and-the-books)
-      * [Joining These Cases](#joining-these-cases)
-    * [Why and How to Activate Dirty Tracking](#why-and-how-to-activate-dirty-tracking)
-    * [How to Map a Boolean to a Yes/No](#how-to-map-a-boolean-to-a-yesno)
-    * [The Best Way to Publish Domain Events from Aggregate Roots](#the-best-way-to-publish-domain-events-from-aggregate-roots)
-  * [Fetching](#fetching)
-    * [How to use Direct fetching](#how-to-use-direct-fetching)
-      * [Direct Fetching via Spring Data](#direct-fetching-via-spring-data)
-      * [Fetching via EntityManager](#fetching-via-entitymanager)
-      * [Fetching via Hibernate-Specific Session](#fetching-via-hibernate-specific-session)
-    * [Direct Fetching and Session-Level Repeatable-Reads](#direct-fetching-and-session-level-repeatable-reads)
-      * [Direct Fetching Multiple Entities by ID](#direct-fetching-multiple-entities-by-id)
-    * [Why Use Read-Only Entities Whenever You Plan to Propagate Changes to the Database in a Future Persistence Context](#why-use-read-only-entities-whenever-you-plan-to-propagate-changes-to-the-database-in-a-future-persistence-context)
-      * [Load Author in Read-Write Mode](#load-author-in-read-write-mode)
-      * [Load Author in Read-Only Mode](#load-author-in-read-only-mode)
-      * [Update the Author](#update-the-author)
-    * [How to Lazy Load the Entity Attributes via Hibernate Bytecode Enhancement](#how-to-lazy-load-the-entity-attributes-via-hibernate-bytecode-enhancement)
-      * [enabling Lazy Loading of Attributes](#enabling-lazy-loading-of-attributes)
-    * [Attribute Lazy Loading and N+1](#attribute-lazy-loading-and-n1)
-    * [Attribute Lazy Loading and Lazy Initialization Exceptions](#attribute-lazy-loading-and-lazy-initialization-exceptions)
-      * [Providing a Custom Jackson Filter](#providing-a-custom-jackson-filter)
-    * [How to Lazy Load the  Entity Attributes via Subentities](#how-to-lazy-load-the--entity-attributes-via-subentities)
-    * [How to Fetch DTO via Spring Projections](#how-to-fetch-dto-via-spring-projections)
-      * [JPA Named (Native) Queries Can Be Combined with Spring Projections](#jpa-named-native-queries-can-be-combined-with-spring-projections)
-      * [Class-Based Projections](#class-based-projections)
-      * [How to Reuse a Spring Projection](#how-to-reuse-a-spring-projection)
-      * [How to Use Dynamic Spring Projections](#how-to-use-dynamic-spring-projections)
-    * [How to Add an Entity in a Spring Projection](#how-to-add-an-entity-in-a-spring-projection)
-      * [Materialized Association](#materialized-association)
-      * [Not Materialized Association](#not-materialized-association)
-    * [How to Enrich Spring Projections with Virtual Properties That Are/Aren’t Part of Entities](#how-to-enrich-spring-projections-with-virtual-properties-that-arearent-part-of-entities)
-    * [How to Efficiently Fetch Spring Projection Including *-to-One Associations](#how-to-efficiently-fetch-spring-projection-including--to-one-associations)
-      * [Using Nested Closed Projections](#using-nested-closed-projections)
-      * [Using a Simple Closed Projection](#using-a-simple-closed-projection)
-      * [Using a Simple Open Projection](#using-a-simple-open-projection)
-    * [Why to Pay Attention to Spring Projections that Include Associated Collections](#why-to-pay-attention-to-spring-projections-that-include-associated-collections)
-      * [Using Nested Spring Closed Projection](#using-nested-spring-closed-projection)
-      * [Use the Query Builder Mechanism](#use-the-query-builder-mechanism)
-      * [Use an Explicit JPQL](#use-an-explicit-jpql)
-      * [Use JPA JOIN FETCH](#use-jpa-join-fetch)
-      * [Using a Simple Closed Projection](#using-a-simple-closed-projection-1)
-      * [Transform List<Object[]> in DTO](#transform-listobject-in-dto)
-    * [How to Fetch All Entity Attributes via Spring Projection](#how-to-fetch-all-entity-attributes-via-spring-projection)
-      * [Using the Query Builder Mechanism](#using-the-query-builder-mechanism-1)
-      * [Using JPQL and @Query](#using-jpql-and-query)
-      * [Using JPQL with an Explicit List of Columns and @Query](#using-jpql-with-an-explicit-list-of-columns-and-query)
-      * [Using a Native Query and @Query](#using-a-native-query-and-query)
-    * [How to Fetch DTO via Constructor Expression](#how-to-fetch-dto-via-constructor-expression)
-    * [Why You Should Avoid Fetching Entities in DTO via the Constructor Expression](#why-you-should-avoid-fetching-entities-in-dto-via-the-constructor-expression)
-    * [How to Fetch DTO via a JPA Tuple](#how-to-fetch-dto-via-a-jpa-tuple)
-    * [How to Fetch DTO via @SqlResultSetMapping and @NamedNativeQuery](#how-to-fetch-dto-via-sqlresultsetmapping-and-namednativequery)
-      * [Scalar Mappings](#scalar-mappings)
-      * [Constructor Mapping](#constructor-mapping)
-      * [Entity Mapping](#entity-mapping)
-    * [How to Fetch DTO via ResultTransformer](#how-to-fetch-dto-via-resulttransformer)
+    * [How to effectively shape the @OneToMany Associations](#how-to-effectively-shape-the-onetomany-associations)
+        * [Best way to code a bidirectional @OneToMany association](#best-way-to-code-a-bidirectional-onetomany-association)
+    * [Why should you avoid the unidirectional @OneToMany Association](#why-should-you-avoid-the-unidirectional-onetomany-association)
+        * [Regular Unidirectional @OneToMany](#regular-unidirectional-onetomany)
+            * [Persisting Author and their books](#persisting-author-and-their-books)
+            * [Persisting a new book of an existing author](#persisting-a-new-book-of-an-existing-author)
+            * [Deleting the last book](#deleting-the-last-book)
+            * [Deleting the first book](#deleting-the-first-book)
+        * [Using @OrderColumn](#using-ordercolumn)
+            * [Persist the Author and Books](#persist-the-author-and-books)
+            * [Persist a New Book of an Existing Author](#persist-a-new-book-of-an-existing-author)
+            * [Delete the Last Book](#delete-the-last-book)
+            * [Delete the First Book](#delete-the-first-book)
+        * [@JoinColumn](#joincolumn)
+            * [Persist the author and the books](#persist-the-author-and-the-books)
+            * [Persist a New Book of an Existing Author](#persist-a-new-book-of-an-existing-author-1)
+            * [Delete the Last Book](#delete-the-last-book-1)
+            * [Delete the First Book](#delete-the-first-book-1)
+    * [How Efficient Is the Unidirectional @ManyToOne](#how-efficient-is-the-unidirectional-manytoone)
+        * [Adding a New Book to a Certain Author](#adding-a-new-book-to-a-certain-author)
+        * [Fetching All Books of an Author](#fetching-all-books-of-an-author)
+        * [Paging the Books of an Author](#paging-the-books-of-an-author)
+        * [Fetching All Books of an Author and Adding a New Book](#fetching-all-books-of-an-author-and-adding-a-new-book)
+        * [Fetching all Books of an Author and Deleting a Book](#fetching-all-books-of-an-author-and-deleting-a-book)
+    * [How to Effectively Shape the @ManyToMany Association](#how-to-effectively-shape-the-manytomany-association)
+        * [The best way to code a bidirectional @ManyToMany association is described in the following sections.](#the-best-way-to-code-a-bidirectional-manytomany-association-is-described-in-the-following-sections)
+            * [Choose the Owner of the Relationship](#choose-the-owner-of-the-relationship)
+            * [Always Use Set not List](#always-use-set-not-list)
+            * [Keep Both Sides of the Association in Sync](#keep-both-sides-of-the-association-in-sync)
+            * [Avoid CascadeType.ALL and CascadeType.REMOVE](#avoid-cascadetypeall-and-cascadetyperemove)
+            * [Setting Up the Join Table](#setting-up-the-join-table)
+            * [Using Lazy Fetching on Both Sides of the Association](#using-lazy-fetching-on-both-sides-of-the-association)
+            * [Override equals() and hashCode()](#override-equals-and-hashcode)
+            * [Pay Attention to How toString() Is Overridden](#pay-attention-to-how-tostring-is-overridden)
+    * [Why Set Is Better than List in @ManyToMany](#why-set-is-better-than-list-in-manytomany)
+        * [Using List](#using-list)
+        * [Using set](#using-set)
+        * [Preserving the Order of the Result Set](#preserving-the-order-of-the-result-set)
+            * [Using @OrderBy](#using-orderby)
+    * [Why and When to Avoid Removing Child Entities with CascadeType.Remove and orphanRemoval=true](#why-and-when-to-avoid-removing-child-entities-with-cascadetyperemove-and-orphanremovaltrue)
+        * [Deleting Authors that Are Already Loaded in the Persistence Context](#deleting-authors-that-are-already-loaded-in-the-persistence-context)
+        * [One Author Has Already Been Loaded in the Persistence Context](#one-author-has-already-been-loaded-in-the-persistence-context)
+        * [More Authors Have Been Loaded in the Persistence Context](#more-authors-have-been-loaded-in-the-persistence-context)
+        * [One Author and His Associated Books Have Been Loaded in the Persistence Context](#one-author-and-his-associated-books-have-been-loaded-in-the-persistence-context)
+        * [Deleting When the Author and Books that Should Be Deleted Are Not Loaded in the Persistence Context](#deleting-when-the-author-and-books-that-should-be-deleted-are-not-loaded-in-the-persistence-context)
+    * [How to Fetch Associations via JPA Entity Graphs](#how-to-fetch-associations-via-jpa-entity-graphs)
+        * [Defining an Entity Graph via @NamedEntityGraph](#defining-an-entity-graph-via-namedentitygraph)
+        * [Overriding a Query Method](#overriding-a-query-method)
+        * [Using the Query Builder Mechanism](#using-the-query-builder-mechanism)
+        * [Using Specification](#using-specification)
+        * [Using @Query and JPQL](#using-query-and-jpql)
+        * [consider](#consider)
+        * [Ad Hoc Entity Graphs](#ad-hoc-entity-graphs)
+        * [Defining an Entity Graph via EntityManager](#defining-an-entity-graph-via-entitymanager)
+    * [How to Fetch Associations via Entity Sub-Graphs](#how-to-fetch-associations-via-entity-sub-graphs)
+        * [Using @NamedEntityGraph and @NamedSubgraph](#using-namedentitygraph-and-namedsubgraph)
+        * [Using the Dot Notation (.) in Ad Hoc Entity Graphs](#using-the-dot-notation--in-ad-hoc-entity-graphs)
+        * [Defining an Entity Sub-Graph via EntityManager](#defining-an-entity-sub-graph-via-entitymanager)
+    * [How to Handle Entity Graphs and Basic Attributes](#how-to-handle-entity-graphs-and-basic-attributes)
+    * [How to Filter Associations via a Hibernate-Specific @Where Annotation](#how-to-filter-associations-via-a-hibernate-specific-where-annotation)
+    * [How to Optimize Unidirectional/ Bidirectional @OneToOne via @MapsId](#how-to-optimize-unidirectional-bidirectional-onetoone-via-mapsid)
+        * [Regular Unidirectional @OneToOne](#regular-unidirectional-onetoone)
+        * [Regular Bidirectional @OneToOne](#regular-bidirectional-onetoone)
+        * [@MapsId to the Rescue of @OneToOne](#mapsid-to-the-rescue-of-onetoone)
+    * [How to Validate that Only One Association Is Non-Null](#how-to-validate-that-only-one-association-is-non-null)
+        * [Testing Time](#testing-time)
+    * [Entities](#entities)
+        * [How to Adopt a Fluent API Style in Entities](#how-to-adopt-a-fluent-api-style-in-entities)
+            * [Fluent-Style via Entity Setters](#fluent-style-via-entity-setters)
+            * [Fluent-Style via Additional Methods](#fluent-style-via-additional-methods)
+        * [How to Populate a Child-Side Parent Association via a Hibernate-Specific Proxy](#how-to-populate-a-child-side-parent-association-via-a-hibernate-specific-proxy)
+            * [Using findById()](#using-findbyid)
+            * [Using getOne()](#using-getone)
+        * [How to Use Java 8 Optional in Persistence Layer](#how-to-use-java-8-optional-in-persistence-layer)
+            * [Optional in Entities](#optional-in-entities)
+            * [Optional in Repositories](#optional-in-repositories)
+        * [How to Write Immutable Entities](#how-to-write-immutable-entities)
+            * [**Financial Transactions**:](#financial-transactions)
+            * [**Configuration Parameters**:](#configuration-parameters)
+            * [**Immutable Collections**:](#immutable-collections)
+            * [**Thread Safety**:](#thread-safety)
+            * [**Event Sourcing**:](#event-sourcing)
+        * [How to Clone Entities](#how-to-clone-entities)
+            * [Cloning the Parent and Associating the Books](#cloning-the-parent-and-associating-the-books)
+            * [Cloning the Parent and the Books](#cloning-the-parent-and-the-books)
+            * [Joining These Cases](#joining-these-cases)
+        * [Why and How to Activate Dirty Tracking](#why-and-how-to-activate-dirty-tracking)
+        * [How to Map a Boolean to a Yes/No](#how-to-map-a-boolean-to-a-yesno)
+        * [The Best Way to Publish Domain Events from Aggregate Roots](#the-best-way-to-publish-domain-events-from-aggregate-roots)
+    * [Fetching](#fetching)
+        * [How to use Direct fetching](#how-to-use-direct-fetching)
+            * [Direct Fetching via Spring Data](#direct-fetching-via-spring-data)
+            * [Fetching via EntityManager](#fetching-via-entitymanager)
+            * [Fetching via Hibernate-Specific Session](#fetching-via-hibernate-specific-session)
+        * [Direct Fetching and Session-Level Repeatable-Reads](#direct-fetching-and-session-level-repeatable-reads)
+            * [Direct Fetching Multiple Entities by ID](#direct-fetching-multiple-entities-by-id)
+        * [Why Use Read-Only Entities Whenever You Plan to Propagate Changes to the Database in a Future Persistence Context](#why-use-read-only-entities-whenever-you-plan-to-propagate-changes-to-the-database-in-a-future-persistence-context)
+            * [Load Author in Read-Write Mode](#load-author-in-read-write-mode)
+            * [Load Author in Read-Only Mode](#load-author-in-read-only-mode)
+            * [Update the Author](#update-the-author)
+        * [How to Lazy Load the Entity Attributes via Hibernate Bytecode Enhancement](#how-to-lazy-load-the-entity-attributes-via-hibernate-bytecode-enhancement)
+            * [enabling Lazy Loading of Attributes](#enabling-lazy-loading-of-attributes)
+        * [Attribute Lazy Loading and N+1](#attribute-lazy-loading-and-n1)
+        * [Attribute Lazy Loading and Lazy Initialization Exceptions](#attribute-lazy-loading-and-lazy-initialization-exceptions)
+            * [Providing a Custom Jackson Filter](#providing-a-custom-jackson-filter)
+        * [How to Lazy Load the  Entity Attributes via Subentities](#how-to-lazy-load-the--entity-attributes-via-subentities)
+        * [How to Fetch DTO via Spring Projections](#how-to-fetch-dto-via-spring-projections)
+            * [JPA Named (Native) Queries Can Be Combined with Spring Projections](#jpa-named-native-queries-can-be-combined-with-spring-projections)
+            * [Class-Based Projections](#class-based-projections)
+            * [How to Reuse a Spring Projection](#how-to-reuse-a-spring-projection)
+            * [How to Use Dynamic Spring Projections](#how-to-use-dynamic-spring-projections)
+        * [How to Add an Entity in a Spring Projection](#how-to-add-an-entity-in-a-spring-projection)
+            * [Materialized Association](#materialized-association)
+            * [Not Materialized Association](#not-materialized-association)
+        * [How to Enrich Spring Projections with Virtual Properties That Are/Aren’t Part of Entities](#how-to-enrich-spring-projections-with-virtual-properties-that-arearent-part-of-entities)
+        * [How to Efficiently Fetch Spring Projection Including *-to-One Associations](#how-to-efficiently-fetch-spring-projection-including--to-one-associations)
+            * [Using Nested Closed Projections](#using-nested-closed-projections)
+            * [Using a Simple Closed Projection](#using-a-simple-closed-projection)
+            * [Using a Simple Open Projection](#using-a-simple-open-projection)
+        * [Why to Pay Attention to Spring Projections that Include Associated Collections](#why-to-pay-attention-to-spring-projections-that-include-associated-collections)
+            * [Using Nested Spring Closed Projection](#using-nested-spring-closed-projection)
+            * [Use the Query Builder Mechanism](#use-the-query-builder-mechanism)
+            * [Use an Explicit JPQL](#use-an-explicit-jpql)
+            * [Use JPA JOIN FETCH](#use-jpa-join-fetch)
+            * [Using a Simple Closed Projection](#using-a-simple-closed-projection-1)
+            * [Transform List<Object[]> in DTO](#transform-listobject-in-dto)
+        * [How to Fetch All Entity Attributes via Spring Projection](#how-to-fetch-all-entity-attributes-via-spring-projection)
+            * [Using the Query Builder Mechanism](#using-the-query-builder-mechanism-1)
+            * [Using JPQL and @Query](#using-jpql-and-query)
+            * [Using JPQL with an Explicit List of Columns and @Query](#using-jpql-with-an-explicit-list-of-columns-and-query)
+            * [Using a Native Query and @Query](#using-a-native-query-and-query)
+        * [How to Fetch DTO via Constructor Expression](#how-to-fetch-dto-via-constructor-expression)
+        * [Why You Should Avoid Fetching Entities in DTO via the Constructor Expression](#why-you-should-avoid-fetching-entities-in-dto-via-the-constructor-expression)
+        * [How to Fetch DTO via a JPA Tuple](#how-to-fetch-dto-via-a-jpa-tuple)
+        * [How to Fetch DTO via @SqlResultSetMapping and @NamedNativeQuery](#how-to-fetch-dto-via-sqlresultsetmapping-and-namednativequery)
+            * [Scalar Mappings](#scalar-mappings)
+            * [Constructor Mapping](#constructor-mapping)
+            * [Entity Mapping](#entity-mapping)
+        * [How to Fetch DTO via ResultTransformer](#how-to-fetch-dto-via-resulttransformer)
+
 <!-- TOC -->
+
 # Associations
 
 ## How to effectively shape the @OneToMany Associations
@@ -7051,7 +7054,6 @@ JPA @SqlResultSetMapping and @NamedNativeQuery is a combination that works for
 scalar (ColumnResult), constructor (ConstructorResult), and entity (EntityResult)
 mappings.
 
-
 #### Scalar Mappings
 
 Via ColumnResult, you can map any column to a scalar result type. For example, let’s
@@ -7153,7 +7155,6 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
 Calling fetchNameAndAge() will trigger the following SQL (this is the native SQL
 provided in @NamedNativeQuery):
 
-
 ```
 SELECT
  name,
@@ -7165,8 +7166,8 @@ FROM author
 
 You can fetch a single entity or multiple entities via EntityResult.
 
-scalar queries deal with single values, constructor expressions are used for creating custom objects in the query, and entity mapping involves the mapping between Java objects and database tables
-
+scalar queries deal with single values, constructor expressions are used for creating custom objects in the query, and
+entity mapping involves the mapping between Java objects and database tables
 
 ### How to Fetch DTO via ResultTransformer
 
@@ -7195,7 +7196,6 @@ The goal is to fetch only the name and age of all authors. This time, the applic
 relies on DTO and on the Hibernate-specific ResultTransformer. This interface is the
 Hibernate-specific way to transform query results into the actual application-visible
 query result list. It works for JPQL and native queries and is a really powerful feature.
-
 
 The first step consists of defining the DTO class. ResultTransformer can fetch data in a
 DTO with a constructor and no setters or in a DTO with no constructor but with setters.
@@ -7330,7 +7330,6 @@ public class AuthorDto implements Serializable {
 
 As you can see, besides ID, name, and age, this DTO also declares a List<BookDto>. The
 BookDto maps the ID and the title of a book as follows:
-
 
 ```
 public class BookDto implements Serializable {
@@ -7534,7 +7533,6 @@ The Hibernate-specific @Subselect provides a solution to this problem. Via
 SELECT. Via this entity, the application can fetch the associations on demand (you can
 lazy navigate the associations). The steps to follow are:
 
-
 * Define a new entity that contains only the needed fields from the
   Author (it’s very important to include the association to Book as well).
 * For all these fields, define only getters
@@ -7632,7 +7630,7 @@ FROM book books0_
 WHERE books0_.author_id = ?
 ```
 
-###  How to Fetch DTO via Blaze-Persistence Entity Views
+### How to Fetch DTO via Blaze-Persistence Entity Views
 
 Assume that the application contains the following Author entity. This entity maps an
 author profile:
@@ -7726,11 +7724,11 @@ public class BlazeConfiguration {
  }
 }
 ```
+
 All the settings are in place. It’s time to exploit Blaze Persistence goodies. The
 application should fetch from the database only the name and age of the authors.
 Therefore, it’s time to write a DTO, or more precisely, an entity view via an interface in
 Blaze-Persistence fashion. The key here consists of annotating the view with `@EntityView(Author.class)`
-
 
 ```
 @EntityView(Author.class)
@@ -7743,7 +7741,6 @@ public interface AuthorView {
 Further, write a Spring-centric repository by extending EntityViewRepository (this is a
 Blaze Persistence interface):
 
-
 ```
 @Repository
 @Transactional(readOnly = true)
@@ -7755,7 +7752,6 @@ public interface AuthorViewRepository
 The EntityViewRepository interface is a base interface that inherits the most commonly
 used repository methods. Basically, it can be used as any other Spring Data repository.
 For example, you can call findAll() to fetch all authors in AuthorView as follows:
-
 
 ```
 @Service
@@ -7825,7 +7821,6 @@ This time, the goal is to perform the following two queries:
 * Fetch an author by name, including their books
 * Fetch a book by ISBN, including the author
 
-
 Having a lazy association between authors and books, the goal can be accomplished in two
 SQL SELECTs. Fetching the author in a SELECT and calling getBooks() will trigger a second
 SELECT to fetch the books. Or, fetching a book in a SELECT and calling getAuthor() will
@@ -7833,9 +7828,9 @@ trigger a second SELECT to fetch the author. This approach highlights at least t
 
 * The application triggers two SELECTs instead of one.
 * The lazy fetching (the second SELECT) must take place in an active
-Hibernate session to avoid LazyInitializationException (this
-exception occurs if the application calls author.getBooks() or book.
-getAuthor() outside of a Hibernate session).
+  Hibernate session to avoid LazyInitializationException (this
+  exception occurs if the application calls author.getBooks() or book.
+  getAuthor() outside of a Hibernate session).
 
 Obviously, in this case, it will be preferable to fetch the author and book data in a single
 SELECT instead of two. However, the application cannot use an SQL JOIN + DTO because
@@ -7876,7 +7871,6 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
 Calling fetchAuthorWithBooksByName() will trigger the following SQL (the Author and
 their Books are loaded in a single SELECT):
-
 
 ```
 SELECT
@@ -8056,7 +8050,6 @@ Author name: Joana Nimar,
 This looks correct! There is a single book in the database more expensive than 40 dollars
 and its author is Joana Nimar.
 
-
 #### How JOIN Will Act
 
 On the other hand, JOIN doesn’t allow associated collections to be initialized
@@ -8113,17 +8106,16 @@ Author name: Joana Nimar,
 Two things must be highlighted here: an important drawback and a potential confusion.
 
 * **First**, the drawback. Notice that JOIN has fetched the books in an additional SELECT. This
-can be considered a performance penalty in comparison to JOIN FETCH, which needs a
-single SELECT, and therefore a single database round trip.
+  can be considered a performance penalty in comparison to JOIN FETCH, which needs a
+  single SELECT, and therefore a single database round trip.
 
 * **Second**, a potential confusion. Pay extra attention to the interpretation of the WHERE
-books1_.price > ? clause in the first SELECT. While the application fetches only the
-authors who have written books that are more expensive than 40 dollars, when calling
-getBooks(), the application fetches all the books of these authors, not only the books
-more expensive than 40 dollars. This is normal since, when getBooks() is called, the
-WHERE clause is not there anymore. Therefore, in this case, JOIN produced a different
-result than JOIN FETCH.
-
+  books1_.price > ? clause in the first SELECT. While the application fetches only the
+  authors who have written books that are more expensive than 40 dollars, when calling
+  getBooks(), the application fetches all the books of these authors, not only the books
+  more expensive than 40 dollars. This is normal since, when getBooks() is called, the
+  WHERE clause is not there anymore. Therefore, in this case, JOIN produced a different
+  result than JOIN FETCH.
 
 #### Fetch All Books and their Authors
 
@@ -8202,7 +8194,6 @@ Book title: Carrie, Isbn:001-OG,
 
 Everything looks as expected! There are four books and each of them has an author.
 
-
 #### How JOIN Will Act
 
 On the other hand, calling fetchBooksAuthorsInnerJoinBad() will trigger a single SQL
@@ -8219,7 +8210,6 @@ FROM book book0_
 INNER JOIN author author1_
  ON book0_.author_id = author1_.id
 ```
-
 
 The returned List<Book> contains four Books. Looping this list and fetching the author
 of each book via getAuthor() will trigger three additional SELECT statements. There
@@ -8253,11 +8243,9 @@ Book title: Carrie, Isbn: 001-OG,
 In this case, the performance penalty is obvious. While JOIN FETCH needs a single
 SELECT, JOIN needs four SELECT statements
 
-
 How about calling fetchBooksAuthorsInnerJoinGood()? Well, this will produce
 the exact same query and result as JOIN FETCH. This is working because the fetched
 association is not a collection. So, in this case, you can use JOIN or JOIN FETCH.
-
 
 As a rule of thumb, use JOIN FETCH (not JOIN) whenever the data should
 be fetched as entities (because the application plans to modify them) and
@@ -8270,7 +8258,8 @@ On the other hand,
 whenever you’re fetching read-only data (you don’t plan to modify it), it’s
 better rely on JOIN + DTO instead of JOIN FETCH.
 
-JOIN FETCH is typically used when you want to fetch associated entities eagerly to avoid the N+1 query problem, but it's not suitable for navigating through properties within a collection. Use regular JOIN clauses for that purpose.
+JOIN FETCH is typically used when you want to fetch associated entities eagerly to avoid the N+1 query problem, but it's
+not suitable for navigating through properties within a collection. Use regular JOIN clauses for that purpose.
 
 example the following queries wont work
 
@@ -8298,12 +8287,14 @@ Causes: org.hibernate.QueryException: illegal attempt to
 dereference collection [author0_.id.books] with element
 property reference [title]
 
+The error you're encountering suggests that you're trying to dereference a collection (a.books) with an element property
+reference (title). Dereferencing a collection like this is not allowed in Hibernate.
 
-The error you're encountering suggests that you're trying to dereference a collection (a.books) with an element property reference (title). Dereferencing a collection like this is not allowed in Hibernate.
+The JOIN FETCH clause in Hibernate is used to eagerly fetch associations, but it's typically applied to associations
+between entities, not to properties within a collection.
 
-The JOIN FETCH clause in Hibernate is used to eagerly fetch associations, but it's typically applied to associations between entities, not to properties within a collection.
-
-If you need the entire Author entity with its associated books and want to access the titles of those books, you can use a query like this:
+If you need the entire Author entity with its associated books and want to access the titles of those books, you can use
+a query like this:
 
 ```
 SELECT a, b.title FROM Author a JOIN a.books b
@@ -8328,7 +8319,6 @@ will not fetch the associated collections in the same SELECT.
 So, the solution should combine the advantages brought by JOIN FETCH and LEFT JOIN
 and should eliminate their disadvantages. This is perfectly achievable via LEFT JOIN
 FETCH as in the following repository
-
 
 ```
 @Repository
@@ -8390,9 +8380,9 @@ LEFT OUTER JOIN author author1_
  ON book0_.author_id = author1_.id
 ```
 
-###  How to Fetch DTO from Unrelated Entities
+### How to Fetch DTO from Unrelated Entities
 
-Unrelated entities are entities that don’t have an explicit association between them. 
+Unrelated entities are entities that don’t have an explicit association between them.
 
 ![img.png](assets/imgfsdgddfgfd.png)
 
@@ -8439,12 +8429,13 @@ joins:
 INNER JOIN is useful for fetching data if it’s present in both tables.
 
 OUTER JOIN can be:
+
 * LEFT OUTER JOIN: Fetches data present in the left table
 * RIGHT OUTER JOIN: Fetches data present in the right table
 * FULL OUTER JOIN: fetches data present in either of the two tables (can
-be inclusive or exclusive)
+  be inclusive or exclusive)
 * CROSS JOIN: Joins everything with everything; a CROSS JOIN that does
-not have an ON or WHERE clause gives the Cartesian product
+  not have an ON or WHERE clause gives the Cartesian product
 
 In a query (JPQL/SQL), specifying JOIN means INNER JOIN. Specifying LEFT/RIGHT/FULL
 JOIN means LEFT/RIGHT/FULL OUTER JOIN.
@@ -8675,7 +8666,6 @@ tested on PostgreSQL.
 Assume the author table is table A and the book table is table B. An inclusive FULL JOIN
 expressed via JPQL can be written as follows:
 
-
 ```
 @Query(value = "SELECT b.title AS title, a.name AS name "
  + "FROM Author a FULL JOIN a.books b")
@@ -8733,5 +8723,345 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
 This query uses UNION; therefore, it removes duplicates. Nevertheless, there
 are legitimate cases where duplicate results are expected. For such cases,
 use UNION ALL instead of UNION.
+
+### How to Paginate JOINs
+
+Consider the well known Author and Book entities in a bidirectional lazy @OneToMany
+association. Now, let’s assume that the fetched result set should be read-only and it
+should contain only the names and ages of authors of the given genre and the ISBNs and
+titles of the associated books. Moreover, you want to fetch the result set in pages. This is a
+perfect job for JOIN + projections (DTO); therefore, start by writing a Spring projection as
+follows:
+
+```
+public interface AuthorBookDto {
+ public String getName(); // of author
+ public int getAge(); // of author
+ public String getTitle(); // of book
+ public String getIsbn(); // of book
+}
+```
+
+Further, write a JPQL relying on a LEFT JOIN, as follows:
+
+```
+@Transactional(readOnly = true)
+@Query(value = "SELECT a.name AS name, a.age AS age,
+ b.title AS title, b.isbn AS isbn
+ FROM Author a LEFT JOIN a.books b WHERE a.genre = ?1")
+Page<AuthorBookDto> fetchPageOfDto(String genre, Pageable pageable);
+```
+
+The service-method that calls fetchPageOfDto() can be written as follows:
+
+```
+public Page<AuthorBookDto> fetchPageOfAuthorsWithBooksDtoByGenre(
+ int page, int size) {
+ Pageable pageable = PageRequest.of(page, size,
+ Sort.by(Sort.Direction.ASC, "name"));
+ Page<AuthorBookDto> pageOfAuthors
+ = authorRepository.fetchPageOfDto("Anthology", pageable);
+ return pageOfAuthors;
+}
+```
+
+The trigger SQL statements are as follows
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.age AS col_1_0_,
+ books1_.title AS col_2_0_,
+ books1_.isbn AS col_3_0_
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ ON author0_.id = books1_.author_id
+WHERE author0_.genre = ?
+ORDER BY author0_.name ASC LIMIT ? ?
+
+SELECT
+ COUNT(author0_.id) AS col_0_0_
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ ON author0_.id = books1_.author_id
+WHERE author0_.genre = ?
+```
+A JSON representation of a possible result set is as follows:
+
+```
+{
+ "content":[
+ {
+ "title":"The Beatles Anthology",
+ "isbn":"001-MJ",
+ "age":23,
+ "name":"Mark Janel"
+ },
+ {
+ "title":"Anthology From Zero To Expert",
+ "isbn":"002-MJ",
+ "age":23,
+ "name":"Mark Janel"
+ }
+ ],
+ "pageable":{
+ "sort":{
+ "sorted":true,
+ "unsorted":false,
+ "empty":false
+ },
+ "pageSize":2,
+ "pageNumber":0,
+ "offset":0,
+ "paged":true,
+ "unpaged":false
+ },
+ "totalElements":7,
+ "totalPages":4,
+ "last":false,
+ "numberOfElements":2,
+ "first":true,
+ "sort":{
+ "sorted":true,
+ "unsorted":false,
+ "empty":false
+ },
+ "number":0,
+ "size":2,
+ "empty":false
+}
+```
+
+Notice that this is the raw result. Sometimes this is all you need. Otherwise, it can be
+further processed in memory to give it different shapes (e.g., group all books of an author
+under a list). You can do this on the server side or on the client side.
+
+
+this SELECT COUNT can be assimilated in a single query
+via a SELECT subquery or using the COUNT(*) OVER() window function. In order to rely
+on COUNT(*) OVER(), add an additional field in AuthorBookDto to store the total number
+of rows:
+
+
+```
+public interface AuthorBookDto {
+ public String getName(); // of author
+ public int getAge(); // of author
+ public String getTitle(); // of book
+ public String getIsbn(); // of book
+ @JsonIgnore
+ public long getTotal();
+}
+```
+
+Further, trigger a native query as follows:
+
+```
+@Transactional(readOnly = true)
+@Query(value = "SELECT a.name AS name, a.age AS age, b.title AS title,
+ b.isbn AS isbn, COUNT(*) OVER() AS total FROM author a
+ LEFT JOIN book b ON a.id = b.author_id WHERE a.genre = ?1",
+ nativeQuery = true)
+List<AuthorBookDto> fetchListOfDtoNative(
+ String genre, Pageable pageable);
+```
+
+The service-method for calling fetchListOfDtoNative() is shown here:
+
+```
+public Page<AuthorBookDto> fetchPageOfAuthorsWithBooksDtoByGenreNative(
+ int page, int size) {
+ Pageable pageable = PageRequest.of(page, size,
+ Sort.by(Sort.Direction.ASC, "name"));
+ List<AuthorBookDto> listOfAuthors = authorRepository
+ .fetchListOfDtoNative("Anthology", pageable);
+ Page<AuthorBookDto> pageOfAuthors = new PageImpl(listOfAuthors,
+ pageable, listOfAuthors.isEmpty() ? 0 :
+ listOfAuthors.get(0).getTotal());
+ return pageOfAuthors;
+}
+```
+
+This time, fetching a page requires only a single SQL statement:
+
+```
+SELECT
+ a.name AS name,
+ a.age AS age,
+ b.title AS title,
+ b.isbn AS isbn,
+ COUNT(*) OVER() AS total
+FROM author a
+LEFT JOIN book b
+ ON a.id = b.author_id
+WHERE a.genre = ?
+ORDER BY a.name ASC LIMIT ? ?
+```
+
+Sometimes there is no need to trigger a SELECT COUNT for each page
+because new inserts or removes are very rare. Therefore the number of rows
+remains fixed for a long time. In such cases, trigger a single SELECT COUNT
+when the first page is fetched and use Slice or List for pagination, as in
+the following two approaches
+
+As long as the total number of rows is not relevant for each page, using Slice instead of
+Page is also an option:
+
+```
+@Transactional(readOnly = true)
+@Query(value = "SELECT a.name AS name, a.age AS age, b.title AS title,
+ b.isbn AS isbn FROM Author a LEFT JOIN a.books b
+ WHERE a.genre = ?1")
+Slice<AuthorBookDto> fetchSliceOfDto(
+ String genre, Pageable pageable);
+public Slice<AuthorBookDto> fetchSliceOfAuthorsWithBooksDtoByGenre(
+ int page, int size) {
+ Pageable pageable = PageRequest.of(page, size,
+ Sort.by(Sort.Direction.ASC, "name"));
+ Slice<AuthorBookDto> sliceOfAuthors = authorRepository
+ . fetchSliceOfDto("Anthology", pageable);
+ return sliceOfAuthors;
+}
+```
+
+Again a single SELECT is needed:
+
+```
+SELECT
+ author0_.name AS col_0_0_,
+ author0_.age AS col_1_0_,
+ books1_.title AS col_2_0_,
+ books1_.isbn AS col_3_0_
+FROM author author0_
+LEFT OUTER JOIN book books1_
+ ON author0_.id = books1_.author_id
+WHERE author0_.genre = ?
+ORDER BY author0_.name ASC LIMIT ? ?
+```
+
+Of course, relying on List instead of Page/Slice will trigger a single SQL statement as
+well, but then there will no page metadata available:
+
+
+```
+@Transactional(readOnly = true)
+@Query(value = "SELECT a.name AS name, a.age AS age, b.title AS title,
+ b.isbn AS isbn FROM Author a LEFT JOIN a.books b
+ WHERE a.genre = ?1")
+List<AuthorBookDto> fetchListOfDto(String genre, Pageable pageable);
+
+public List<AuthorBookDto> fetchListOfAuthorsWithBooksDtoByGenre(
+ int page, int size) {
+ Pageable pageable = PageRequest.of(page, size,
+ Sort.by(Sort.Direction.ASC, "name"));
+ List<AuthorBookDto> listOfAuthors
+ = authorRepository.fetchListOfDto("Anthology", pageable);
+ return listOfAuthors;
+}
+```
+
+Calling fetchListOfAuthorsWithBooksDtoByGenre() triggers the same SELECT as in the
+case of Slice. This time the produced JSON doesn’t contain any page metadata.
+
+This time, we use Pageable just to add the SQL clauses for ordering and paging
+via Spring help. Especially when paging, Spring will choose the proper SQL clause
+depending on the dialect (e.g., for MySQL, it will add LIMIT).
+
+So far, you have seen several approaches for fetching a read-only result set that contains
+a subset of columns for authors and the associated books. Because of the pagination,
+the main issue with these approaches is that they are prone to truncate the result set.
+Therefore, an author can be fetched with only a subset of their books
+
+
+How can you avoid truncation of the result set? What can be done if this is a requirement
+of your application design?
+
+#### The DENSE_RANK() Window Function to the Rescue
+
+DENSE_RANK is a window function that assigns a sequential number to different values of
+a within each group b. For this, DENSE_RANK adds a new column (na_rank)
+
+Once DENSE_RANK() has done its job, the query can simply fetch the authors in pages by
+adding a WHERE clause, as in the following native query:
+
+```
+@Transactional(readOnly = true)
+@Query(value = "SELECT * FROM (SELECT *,
+ DENSE_RANK() OVER (ORDER BY name, age) na_rank
+ FROM (SELECT a.name AS name, a.age AS age, b.title AS title,
+ b.isbn AS isbn FROM author a LEFT JOIN book b ON a.id =
+ b.author_id WHERE a.genre = ?1 ORDER BY a.name) ab ) ab_r
+ WHERE ab_r.na_rank > ?2 AND ab_r.na_rank <= ?3",
+ nativeQuery = true)
+List<AuthorBookDto> fetchListOfDtoNativeDenseRank(
+ String genre, int start, int end);
+```
+
+As a rule of thumb, use native queries to write complex queries. This way, you
+can take advantage of window functions, Common Table Expressions (CTE),
+PIVOT, and so on. Using native queries in the proper cases can seriously
+boost the performance of your application. And don’t forget to analyze your
+SQL queries and execution plans to optimize their results.
+
+
+The service-method that calls fetchListOfDtoNativeDenseRank() can be:
+
+```
+public List<AuthorBookDto> fetchListOfAuthorsWithBooksDtoNativeDenseRank(
+ int start, int end) {
+ List<AuthorBookDto> listOfAuthors = authorRepository
+ .fetchListOfDtoNativeDenseRank("Anthology", start, end);
+ return listOfAuthors;
+}
+```
+
+For example, you can fetch the first two authors with books without truncating the books
+as follows:
+
+`fetchListOfAuthorsWithBooksDtoNativeDenseRank(0, 2);`
+
+Representing the result set as a JSON reveals that two authors have been fetched (Mark
+Janel with three books and Merci Umaal with two books):
+
+```
+[
+ {
+ "title":"The Beatles Anthology",
+ "isbn":"001-MJ",
+ "age":23,
+ "name":"Mark Janel"
+ },
+ {
+ "title":"Anthology From Zero To Expert",
+ "isbn":"002-MJ",
+ "age":23,
+ "name":"Mark Janel"
+ },
+ {
+ "title":"Quick Anthology",
+ "isbn":"003-MJ",
+ "age":23,
+ "name":"Mark Janel"
+ },
+ {
+ "title":"Ultimate Anthology",
+ "isbn":"001-MU",
+ "age":31,
+ "name":"Merci Umaal"
+ },
+ {
+ "title":"1959 Anthology",
+ "isbn":"002-MU",
+ "age":31,
+ "name":"Merci Umaal"
+ }
+]
+```
+
+Notice that this is the raw result. It can be further processed in memory to give it different
+shapes (e.g., group all books of an author under a list). This time, Pageable is not used
+and there is no page metadata available, but you can easily add some information (e.g.,
+by adjusting the query to fetch the maximum value assigned by DENSE_RANK(), you can
+obtain the total number of authors).
 
 
